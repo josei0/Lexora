@@ -25,3 +25,7 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Planning & MCP (internal)
+PLAN/
+mcp/
