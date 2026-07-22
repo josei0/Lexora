@@ -1,0 +1,27 @@
+# Env
+.env
+.env.*
+!.env.example
+
+# Backend
+backend/storage/
+backend/tmp/
+backend/*.exe
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/bun.lock
+frontend/tsconfig.tsbuildinfo
+frontend/next-env.d.ts
+
+# Python
+**/__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
