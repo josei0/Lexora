@@ -16,9 +16,9 @@ const playfair = Playfair_Display({
 })
 
 export const metadata: Metadata = {
-  title: 'Lexora — Kecerdasan Hukum Modern',
+  title: 'Lexora | Kecerdasan Hukum Modern',
   description:
-    'Lexora adalah platform hukum cerdas untuk profesional hukum Indonesia—membantu advokat dan firma meneliti peraturan dan putusan, menganalisis kontrak, serta menyusun dokumen dengan presisi.',
+    'Lexora adalah platform hukum cerdas untuk profesional hukum Indonesia, membantu advokat dan firma meneliti peraturan dan putusan, menganalisis kontrak, serta menyusun dokumen dengan presisi.',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -54,7 +54,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id" className={`${inter.variable} ${playfair.variable} bg-background`}>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

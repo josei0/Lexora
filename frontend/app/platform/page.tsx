@@ -7,7 +7,7 @@ import { CTA } from "@/components/cta"
 import { SiteFooter } from "@/components/site-footer"
 
 export const metadata: Metadata = {
-  title: "Platform — Lexora",
+  title: "Platform | Lexora",
   description:
     "Jelajahi platform Lexora: riset hukum, analisis kontrak, penyusunan dokumen, dan pustaka pengetahuan privat dalam satu ruang kerja aman untuk firma hukum.",
 }

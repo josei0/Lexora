@@ -21,7 +21,7 @@ const steps = [
     number: "04",
     title: "Ajukan dengan percaya diri",
     description:
-      "Setiap keluaran disertai jejak audit lengkap—siap untuk tinjauan partner, penyampaian ke klien, atau persidangan.",
+      "Setiap keluaran disertai jejak audit lengkap, siap untuk tinjauan partner, penyampaian ke klien, atau persidangan.",
   },
 ]
 

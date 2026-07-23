@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DEMO_MAILTO } from "@/lib/utils"
 
 export function PlatformHero() {
   return (
@@ -15,15 +16,15 @@ export function PlatformHero() {
           </h1>
           <p className="mt-6 text-pretty text-lg leading-relaxed text-muted-foreground">
             Lexora menyatukan riset, analisis, penyusunan, dan pengetahuan ke
-            dalam satu lingkungan aman—setiap jawaban berlandaskan sumber primer
+            dalam satu lingkungan aman. Setiap jawaban berlandaskan sumber primer
             dan setiap tindakan tercatat dalam arsip Anda.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" className="group h-12 px-6 text-base">
+            <Button render={<a href={DEMO_MAILTO} />} nativeButton={false} size="lg" className="group h-12 px-6 text-base">
               Minta demo
               <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Button>
-            <Button render={<Link href="/" />} size="lg" variant="outline" className="h-12 px-6 text-base">
+            <Button render={<Link href="/" />} nativeButton={false} size="lg" variant="outline" className="h-12 px-6 text-base">
               Kembali ke ikhtisar
             </Button>
           </div>

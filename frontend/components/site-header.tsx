@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Scale, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DEMO_MAILTO } from "@/lib/utils"
 
 const navLinks = [
   { label: "Platform", href: "/platform" },
@@ -39,10 +40,12 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <Button variant="ghost" className="text-sm font-medium">
+          <Button render={<a href="/login" />} nativeButton={false} variant="ghost" className="text-sm font-medium">
             Masuk
           </Button>
-          <Button className="text-sm font-medium">Minta demo</Button>
+          <Button render={<a href={DEMO_MAILTO} />} nativeButton={false} className="text-sm font-medium">
+            Minta demo
+          </Button>
         </div>
 
         <button
@@ -70,10 +73,12 @@ export function SiteHeader() {
               </a>
             ))}
             <div className="mt-3 flex flex-col gap-2">
-              <Button variant="outline" className="w-full">
+              <Button render={<a href="/login" />} nativeButton={false} variant="outline" className="w-full">
                 Masuk
               </Button>
-              <Button className="w-full">Minta demo</Button>
+              <Button render={<a href={DEMO_MAILTO} />} nativeButton={false} className="w-full">
+                Minta demo
+              </Button>
             </div>
           </nav>
         </div>

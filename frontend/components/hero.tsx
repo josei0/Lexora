@@ -2,6 +2,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ArrowRight, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DEMO_MAILTO } from "@/lib/utils"
 
 export function Hero() {
   return (
@@ -24,23 +25,23 @@ export function Hero() {
             <p className="mt-6 text-pretty text-lg leading-relaxed text-muted-foreground">
               Lexora adalah platform hukum cerdas yang membantu advokat meneliti
               peraturan dan putusan, menganalisis kontrak, serta menyusun dokumen
-              yang solid—berdasarkan sumber yang dapat diverifikasi dan dirancang
+              yang solid, berdasarkan sumber yang dapat diverifikasi dan dirancang
               untuk menjaga kerahasiaan.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button size="lg" className="group h-12 px-6 text-base">
+              <Button render={<a href={DEMO_MAILTO} />} nativeButton={false} size="lg" className="group h-12 px-6 text-base">
                 Minta demo
                 <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Button>
-              <Button render={<Link href="/platform" />} size="lg" variant="outline" className="h-12 px-6 text-base">
+              <Button render={<Link href="/platform" />} nativeButton={false} size="lg" variant="outline" className="h-12 px-6 text-base">
                 Jelajahi platform
               </Button>
             </div>
 
             <div className="mt-8 flex items-center gap-2 text-sm text-muted-foreground">
               <ShieldCheck className="h-4 w-4 text-accent" aria-hidden="true" />
-              Data terenkripsi. Kerahasiaan advokat–klien terjaga.
+              Data terenkripsi. Kerahasiaan advokat-klien terjaga.
             </div>
           </div>
 

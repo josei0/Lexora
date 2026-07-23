@@ -104,7 +104,7 @@ export default function AdminPage() {
               value={selPlan} onChange={e => setSelPlan(e.target.value)} required
             >
               <option value="">Pilih plan…</option>
-              {plans.map(p => <option key={p.id} value={p.code}>{p.name} — {p.monthly_token_limit > 0 ? `${(p.monthly_token_limit / 1000).toFixed(0)}k tok/seat` : 'unlimited'}</option>)}
+              {plans.map(p => <option key={p.id} value={p.code}>{p.name} · {p.monthly_token_limit > 0 ? `${(p.monthly_token_limit / 1000).toFixed(0)}k tok/seat` : 'unlimited'}</option>)}
             </select>
             <div className="flex items-center gap-2">
               <label className="text-sm text-muted-foreground w-16">Seat</label>
@@ -144,7 +144,7 @@ export default function AdminPage() {
                 <div key={l.id} className="flex items-center justify-between py-2">
                   <span>{auditLabels[l.action] ?? l.action}</span>
                   <span className="text-xs text-muted-foreground">
-                    {new Date(l.created_at).toLocaleString('id-ID')} · {l.ip || '—'}
+                    {new Date(l.created_at).toLocaleString('id-ID')} · {l.ip || '-'}
                   </span>
                 </div>
               ))}

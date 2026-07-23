@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DEMO_MAILTO } from "@/lib/utils"
 
 export function CTA() {
   return (
@@ -14,11 +15,13 @@ export function CTA() {
             jelajahi penerapan yang disesuaikan untuk praktik Anda.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button size="lg" variant="secondary" className="group h-12 px-6 text-base">
+            <Button render={<a href={DEMO_MAILTO} />} nativeButton={false} size="lg" variant="secondary" className="group h-12 px-6 text-base">
               Minta demo
               <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Button>
             <Button
+              render={<a href={DEMO_MAILTO} />}
+              nativeButton={false}
               size="lg"
               variant="outline"
               className="h-12 border-primary-foreground/30 bg-transparent px-6 text-base text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"

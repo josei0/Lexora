@@ -59,7 +59,7 @@ export function Capabilities() {
           </h2>
           <p className="mt-4 text-pretty text-lg leading-relaxed text-muted-foreground">
             Lexora memperkuat praktik Anda dengan alat yang dirancang khusus untuk
-            tuntutan profesional hukum—akurat, terrujuk, dan rahasia.
+            tuntutan profesional hukum: akurat, terrujuk, dan rahasia.
           </p>
         </div>
 

@@ -68,7 +68,7 @@ export default function KnowledgeBasePage() {
         <div>
           <h1 className="font-serif text-3xl">Pustaka Pengetahuan</h1>
           <p className="text-muted-foreground">
-            Unggah dokumen hukum (PDF, DOCX, TXT — maks 20MB). PDF harus versi teks; hasil scan belum didukung.
+            Unggah dokumen hukum (PDF, DOCX, TXT, maks 20MB). PDF harus versi teks; hasil scan belum didukung.
           </p>
         </div>
         <div>

@@ -25,7 +25,7 @@ export function PracticeAreas() {
             </h2>
             <p className="mt-4 text-pretty text-lg leading-relaxed text-muted-foreground">
               Lexora menyesuaikan diri dengan terminologi, yurisprudensi, dan
-              standar dokumen bidang Anda—sehingga hasilnya terasa seperti dari
+              standar dokumen bidang Anda, sehingga hasilnya terasa seperti dari
               seorang asosiat berpengalaman di tim Anda.
             </p>
           </div>
