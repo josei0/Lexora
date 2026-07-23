@@ -12,6 +12,13 @@ import (
 	httpdelivery "github.com/lexora/backend/internal/delivery/http"
 	"github.com/lexora/backend/internal/delivery/http/handler"
 	"github.com/lexora/backend/internal/repository/postgres"
+	"github.com/lexora/backend/internal/repository/qdrant"
+	"github.com/lexora/backend/internal/usecase"
+	"github.com/lexora/backend/pkg/embedding"
+	"github.com/lexora/backend/pkg/extract"
+	"github.com/lexora/backend/pkg/jwt"
+	"github.com/lexora/backend/pkg/llm"
+	"github.com/lexora/backend/pkg/storage"
 )
 
 func main() {
@@ -24,7 +31,8 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx, cancelRoot := context.WithCancel(context.Background())
+	defer cancelRoot()
 
 	// db pool
 	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
@@ -35,8 +43,51 @@ func main() {
 	log.Println("postgres connected")
 
 	// wiring
-	api := handler.New()
-	router := httpdelivery.NewRouter(api)
+	signer := jwt.New(cfg.JWTSecret, cfg.JWTAccessTTL)
+	userRepo := postgres.NewUserRepo(pool)
+	orgRepo := postgres.NewOrgRepo(pool)
+	memberRepo := postgres.NewMembershipRepo(pool)
+	refreshRepo := postgres.NewRefreshRepo(pool)
+	docRepo := postgres.NewDocumentRepo(pool)
+
+	authUC := usecase.NewAuth(userRepo, memberRepo, refreshRepo, signer, cfg.JWTRefreshTTL)
+	orgUC := usecase.NewOrganization(orgRepo, userRepo, memberRepo)
+
+	// ingestion pipeline
+	store := storage.NewLocal(cfg.StorageDir)
+	extractor := extract.New()
+	embedder := embedding.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.EmbeddingModel, cfg.EmbeddingDim)
+	vectors := qdrant.New(cfg.QdrantURL)
+	ingestUC := usecase.NewIngestion(docRepo, store, extractor, embedder, vectors)
+	ingestUC.Start(ctx, 3)
+	ingestUC.Recover(ctx)
+
+	docUC := usecase.NewDocument(docRepo, store, ingestUC)
+
+	chatRepo := postgres.NewChatRepo(pool)
+	chatLLM := llm.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.ChatModel)
+	ragUC := usecase.NewRAG(chatRepo, embedder, vectors, chatLLM, cfg.RAGTopK, cfg.RAGMinScore)
+
+	// phase 4: billing, subscription, dashboard, prompts, export
+	planRepo := postgres.NewPlanRepo(pool)
+	subRepo := postgres.NewSubscriptionRepo(pool)
+	promptRepo := postgres.NewPromptRepo(pool)
+	usageRepo := postgres.NewUsageRepo(pool)
+
+	billingUC := usecase.NewBilling(subRepo, usageRepo)
+	subUC := usecase.NewSubscription(subRepo, planRepo, usageRepo)
+	dashUC := usecase.NewDashboard(usageRepo, subRepo)
+	promptUC := usecase.NewPrompt(promptRepo)
+	exportUC := usecase.NewExport(ragUC)
+
+	ragUC.SetBilling(billingUC)
+	ragUC.SetPrompts(promptRepo)
+	orgUC.SetSeatGuard(subUC)
+
+	api := handler.New(authUC, orgUC, docUC, cfg.JWTRefreshTTL, cfg.CookieSecure)
+	chatAPI := handler.NewChatAPI(ragUC)
+	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC)
+	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, signer, cfg.CORSOrigins)
 	server := httpdelivery.NewServer(cfg.Port, router)
 
 	// run

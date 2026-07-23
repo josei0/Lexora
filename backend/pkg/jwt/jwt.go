@@ -1,0 +1,75 @@
+package jwt
+
+import (
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/lexora/backend/internal/domain"
+)
+
+// jwt access token signer
+type Signer struct {
+	secret []byte
+	ttl    time.Duration
+}
+
+func New(secret string, ttl time.Duration) *Signer {
+	return &Signer{secret: []byte(secret), ttl: ttl}
+}
+
+type claims struct {
+	OrgID      string `json:"org_id,omitempty"`
+	SystemRole string `json:"sys_role"`
+	OrgRole    string `json:"org_role,omitempty"`
+	jwt.RegisteredClaims
+}
+
+const issuer = "lexora"
+
+// sign access token
+func (s *Signer) Sign(id domain.Identity) (string, error) {
+	now := time.Now()
+	c := claims{
+		SystemRole: id.SystemRole,
+		OrgRole:    id.OrgRole,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   id.UserID.String(),
+			Issuer:    issuer,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.ttl)),
+		},
+	}
+	if id.OrgID != uuid.Nil {
+		c.OrgID = id.OrgID.String()
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString(s.secret)
+}
+
+// verify + parse identity
+func (s *Signer) Verify(token string) (domain.Identity, error) {
+	c := &claims{}
+	_, err := jwt.ParseWithClaims(token, c, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, domain.ErrInvalidToken
+		}
+		return s.secret, nil
+	}, jwt.WithIssuer(issuer), jwt.WithExpirationRequired())
+	if err != nil {
+		return domain.Identity{}, domain.ErrInvalidToken
+	}
+
+	uid, err := uuid.Parse(c.Subject)
+	if err != nil {
+		return domain.Identity{}, domain.ErrInvalidToken
+	}
+	id := domain.Identity{UserID: uid, SystemRole: c.SystemRole, OrgRole: c.OrgRole}
+	if c.OrgID != "" {
+		oid, err := uuid.Parse(c.OrgID)
+		if err != nil {
+			return domain.Identity{}, domain.ErrInvalidToken
+		}
+		id.OrgID = oid
+	}
+	return id, nil
+}

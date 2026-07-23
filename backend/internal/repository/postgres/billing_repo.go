@@ -1,0 +1,158 @@
+package postgres
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lexora/backend/internal/domain"
+)
+
+type PlanRepo struct{ db *pgxpool.Pool }
+
+func NewPlanRepo(db *pgxpool.Pool) *PlanRepo { return &PlanRepo{db} }
+
+func (r *PlanRepo) List(ctx context.Context) ([]domain.Plan, error) {
+	rows, err := r.db.Query(ctx, `
+		select id, code, name, model, price_idr, monthly_token_limit, is_active
+		from plans where is_active = true order by price_idr`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Plan
+	for rows.Next() {
+		p, err := scanPlan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
+	}
+	return out, rows.Err()
+}
+
+func (r *PlanRepo) ByCode(ctx context.Context, code string) (*domain.Plan, error) {
+	return scanPlan(r.db.QueryRow(ctx, `
+		select id, code, name, model, price_idr, monthly_token_limit, is_active
+		from plans where code = $1`, code))
+}
+
+// idempotent seed upsert
+func (r *PlanRepo) Upsert(ctx context.Context, p *domain.Plan) error {
+	return r.db.QueryRow(ctx, `
+		insert into plans (code, name, model, price_idr, monthly_token_limit, is_active)
+		values ($1, $2, $3, $4, $5, $6)
+		on conflict (code) do update set
+			name = excluded.name, model = excluded.model, price_idr = excluded.price_idr,
+			monthly_token_limit = excluded.monthly_token_limit, is_active = excluded.is_active,
+			updated_at = now()
+		returning id`,
+		p.Code, p.Name, p.Model, p.PriceIDR, p.MonthlyTokenLimit, p.IsActive).Scan(&p.ID)
+}
+
+func scanPlan(row pgx.Row) (*domain.Plan, error) {
+	var p domain.Plan
+	err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Model, &p.PriceIDR, &p.MonthlyTokenLimit, &p.IsActive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+type SubscriptionRepo struct{ db *pgxpool.Pool }
+
+func NewSubscriptionRepo(db *pgxpool.Pool) *SubscriptionRepo { return &SubscriptionRepo{db} }
+
+func (r *SubscriptionRepo) ByOrg(ctx context.Context, orgID uuid.UUID) (*domain.SubscriptionView, error) {
+	var v domain.SubscriptionView
+	err := r.db.QueryRow(ctx, `
+		select s.id, s.organization_id, s.plan_id, s.seats, s.created_at, s.updated_at,
+		       p.id, p.code, p.name, p.model, p.price_idr, p.monthly_token_limit, p.is_active
+		from subscriptions s join plans p on p.id = s.plan_id
+		where s.organization_id = $1`, orgID).Scan(
+		&v.ID, &v.OrganizationID, &v.PlanID, &v.Seats, &v.CreatedAt, &v.UpdatedAt,
+		&v.Plan.ID, &v.Plan.Code, &v.Plan.Name, &v.Plan.Model, &v.Plan.PriceIDR, &v.Plan.MonthlyTokenLimit, &v.Plan.IsActive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+func (r *SubscriptionRepo) Upsert(ctx context.Context, s *domain.Subscription) error {
+	return r.db.QueryRow(ctx, `
+		insert into subscriptions (organization_id, plan_id, seats)
+		values ($1, $2, $3)
+		on conflict (organization_id) do update set
+			plan_id = excluded.plan_id, seats = excluded.seats, updated_at = now()
+		returning id, created_at, updated_at`,
+		s.OrganizationID, s.PlanID, s.Seats).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
+}
+
+type PromptRepo struct{ db *pgxpool.Pool }
+
+func NewPromptRepo(db *pgxpool.Pool) *PromptRepo { return &PromptRepo{db} }
+
+func (r *PromptRepo) Get(ctx context.Context, key string) (*domain.Prompt, error) {
+	var p domain.Prompt
+	err := r.db.QueryRow(ctx, `
+		select key, content, updated_by, updated_at from prompts where key = $1`, key).
+		Scan(&p.Key, &p.Content, &p.UpdatedBy, &p.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *PromptRepo) Set(ctx context.Context, key, content string, updatedBy uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `
+		insert into prompts (key, content, updated_by) values ($1, $2, $3)
+		on conflict (key) do update set content = excluded.content, updated_by = excluded.updated_by, updated_at = now()`,
+		key, content, updatedBy)
+	return err
+}
+
+type UsageRepo struct{ db *pgxpool.Pool }
+
+func NewUsageRepo(db *pgxpool.Pool) *UsageRepo { return &UsageRepo{db} }
+
+func (r *UsageRepo) OrgTokens(ctx context.Context, orgID uuid.UUID, from, to time.Time) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, `
+		select coalesce(sum(input_tokens + output_tokens), 0)
+		from token_usage where organization_id = $1 and created_at >= $2 and created_at < $3`,
+		orgID, from, to).Scan(&total)
+	return total, err
+}
+
+func (r *UsageRepo) CountMembers(ctx context.Context, orgID uuid.UUID) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `select count(*) from memberships where organization_id = $1`, orgID).Scan(&n)
+	return n, err
+}
+
+func (r *UsageRepo) ChatsSince(ctx context.Context, orgID uuid.UUID, t time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `
+		select count(*) from chats where organization_id = $1 and created_at >= $2 and deleted_at is null`,
+		orgID, t).Scan(&n)
+	return n, err
+}
+
+func (r *UsageRepo) DocCounts(ctx context.Context, orgID uuid.UUID) (indexed, total int, err error) {
+	err = r.db.QueryRow(ctx, `
+		select count(*) filter (where status = 'indexed'), count(*)
+		from documents where organization_id = $1`, orgID).Scan(&indexed, &total)
+	return
+}
