@@ -25,6 +25,9 @@ func (a *API) CreateOrganization(ctx context.Context, req dto.CreateOrganization
 		}
 		return nil, err
 	}
+	uid := id.UserID
+	orgID := org.ID
+	a.audit.Record(ctx, domain.AuditOrgCreate, &orgID, &uid, &orgID, middleware.ClientIPFrom(ctx))
 	return dto.CreateOrganization201JSONResponse{
 		Organization: dto.Organization{Id: org.ID, Name: org.Name, Slug: org.Slug, CreatedAt: org.CreatedAt},
 		Admin:        dto.AddMemberResponse{UserId: admin.UserID, Email: admin.Email, TempPassword: admin.TempPassword},
@@ -71,6 +74,10 @@ func (a *API) AddMember(ctx context.Context, req dto.AddMemberRequestObject) (dt
 		}
 		return nil, err
 	}
+	uid := id.UserID
+	orgID := id.OrgID
+	newUID := m.UserID
+	a.audit.Record(ctx, domain.AuditMemberAdd, &orgID, &uid, &newUID, middleware.ClientIPFrom(ctx))
 	return dto.AddMember201JSONResponse{UserId: m.UserID, Email: m.Email, TempPassword: m.TempPassword}, nil
 }
 
@@ -117,6 +124,10 @@ func (a *API) UpdateMember(ctx context.Context, req dto.UpdateMemberRequestObjec
 		}
 		return nil, err
 	}
+	uid := id.UserID
+	orgID := id.OrgID
+	targetUID := m.UserID
+	a.audit.Record(ctx, domain.AuditMemberUpdate, &orgID, &uid, &targetUID, middleware.ClientIPFrom(ctx))
 	return dto.UpdateMember200JSONResponse(toMember(*m)), nil
 }
 

@@ -7,6 +7,12 @@
 backend/storage/
 backend/tmp/
 backend/*.exe
+server.log
+server.err
+
+# Dokumen client (jangan masuk repo)
+dokumen/
+samples/
 
 # Frontend
 frontend/node_modules/

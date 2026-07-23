@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ type BillingAPI struct {
 	prompt    *usecase.Prompt
 	export    *usecase.Export
 	billing   *usecase.Billing
+	audit     *usecase.Audit
 }
 
 func NewBillingAPI(
@@ -25,8 +27,9 @@ func NewBillingAPI(
 	prompt *usecase.Prompt,
 	export *usecase.Export,
 	billing *usecase.Billing,
+	audit *usecase.Audit,
 ) *BillingAPI {
-	return &BillingAPI{subs: subs, dashboard: dash, prompt: prompt, export: export, billing: billing}
+	return &BillingAPI{subs: subs, dashboard: dash, prompt: prompt, export: export, billing: billing, audit: audit}
 }
 
 func (a *BillingAPI) Routes(mux *http.ServeMux) {
@@ -44,6 +47,9 @@ func (a *BillingAPI) Routes(mux *http.ServeMux) {
 	// prompts (super admin)
 	mux.HandleFunc("GET /prompts/{key}", a.getPrompt)
 	mux.HandleFunc("PUT /prompts/{key}", a.setPrompt)
+
+	// audit log (super admin, monitoring platform)
+	mux.HandleFunc("GET /audit-logs", a.auditLogs)
 
 	// export
 	mux.HandleFunc("GET /chats/{chatID}/export", a.exportChat)
@@ -159,6 +165,8 @@ func (a *BillingAPI) assignSub(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	uid := id.UserID
+	a.audit.Record(r.Context(), domain.AuditSubAssign, &orgID, &uid, &orgID, middleware.ClientIPFrom(r.Context()))
 	writeJSON(w, http.StatusOK, sub)
 }
 
@@ -207,7 +215,32 @@ func (a *BillingAPI) setPrompt(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	uid := id.UserID
+	a.audit.Record(r.Context(), domain.AuditPromptUpdate, nil, &uid, nil, middleware.ClientIPFrom(r.Context()))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /audit-logs?limit=  (super admin: monitoring platform)
+func (a *BillingAPI) auditLogs(w http.ResponseWriter, r *http.Request) {
+	id, ok := middleware.IdentityFrom(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "sesi tidak valid")
+		return
+	}
+	if !id.IsSuperAdmin() {
+		writeError(w, http.StatusForbidden, "forbidden", "akses ditolak")
+		return
+	}
+	limit := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limit, _ = strconv.Atoi(v)
+	}
+	logs, err := a.audit.Recent(r.Context(), limit)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, logs)
 }
 
 // GET /chats/{chatID}/export?format=word|pdf

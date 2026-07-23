@@ -2,6 +2,8 @@ module github.com/lexora/backend
 
 go 1.26
 
+toolchain go1.26.5
+
 require (
 	github.com/getkin/kin-openapi v0.143.0
 	github.com/golang-jwt/jwt/v5 v5.3.1

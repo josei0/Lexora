@@ -29,6 +29,7 @@ func NewAuth(u domain.UserRepository, m domain.MembershipRepository, r domain.Re
 }
 
 type Tokens struct {
+	UserID             uuid.UUID // for audit logging
 	Access             string
 	Refresh            string // raw token for cookie
 	ExpiresIn          int    // access ttl seconds
@@ -83,7 +84,7 @@ func (a *Auth) issue(ctx context.Context, u *domain.User) (*Tokens, error) {
 	if err := a.refresh.Create(ctx, rt); err != nil {
 		return nil, err
 	}
-	return &Tokens{Access: access, Refresh: raw, ExpiresIn: accessTTLSeconds, MustChangePassword: u.MustChangePassword}, nil
+	return &Tokens{UserID: u.ID, Access: access, Refresh: raw, ExpiresIn: accessTTLSeconds, MustChangePassword: u.MustChangePassword}, nil
 }
 
 // refresh: rotate token

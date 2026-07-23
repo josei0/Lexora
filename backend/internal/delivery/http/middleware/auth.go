@@ -14,6 +14,7 @@ type ctxKey int
 const (
 	identityKey ctxKey = iota
 	refreshKey
+	clientIPKey
 )
 
 const RefreshCookieName = "lexora_refresh"
@@ -28,6 +29,20 @@ func IdentityFrom(ctx context.Context) (domain.Identity, bool) {
 func RefreshFrom(ctx context.Context) string {
 	v, _ := ctx.Value(refreshKey).(string)
 	return v
+}
+
+// pull client ip from ctx (for audit log)
+func ClientIPFrom(ctx context.Context) string {
+	v, _ := ctx.Value(clientIPKey).(string)
+	return v
+}
+
+// inject client ip into ctx so handlers/usecase can audit it (clientIP defined in middleware.go)
+func ClientIP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), clientIPKey, clientIP(r))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // verify bearer -> inject identity. invalid token -> 401. absent -> continue

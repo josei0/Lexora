@@ -20,14 +20,18 @@ func (a *API) Login(ctx context.Context, req dto.LoginRequestObject) (dto.LoginR
 	if req.Body == nil {
 		return dto.Login401JSONResponse{ErrorResponseJSONResponse: dto.ErrorResponseJSONResponse(errBody("invalid_request", "email atau password salah"))}, nil
 	}
+	ip := middleware.ClientIPFrom(ctx)
 	tok, err := a.auth.Login(ctx, string(req.Body.Email), req.Body.Password)
 	if err != nil {
+		a.audit.Record(ctx, domain.AuditLoginFail, nil, nil, nil, ip)
 		if err == domain.ErrRateLimited {
 			return dto.Login429JSONResponse(errBody("rate_limited", "terlalu banyak percobaan login, coba lagi nanti")), nil
 		}
 		// generic - no enumeration
 		return dto.Login401JSONResponse{ErrorResponseJSONResponse: dto.ErrorResponseJSONResponse(errBody("invalid_credentials", "email atau password salah"))}, nil
 	}
+	uid := tok.UserID
+	a.audit.Record(ctx, domain.AuditLoginOK, nil, &uid, nil, ip)
 	cookie := a.cookie(tok.Refresh, a.refreshTTL)
 	mcp := tok.MustChangePassword
 	return dto.Login200JSONResponse{
@@ -63,6 +67,11 @@ func (a *API) Refresh(ctx context.Context, _ dto.RefreshRequestObject) (dto.Refr
 
 // POST /auth/logout
 func (a *API) Logout(ctx context.Context, _ dto.LogoutRequestObject) (dto.LogoutResponseObject, error) {
+	ip := middleware.ClientIPFrom(ctx)
+	if id, ok := middleware.IdentityFrom(ctx); ok {
+		uid := id.UserID
+		a.audit.Record(ctx, domain.AuditLogout, nil, &uid, nil, ip)
+	}
 	_ = a.auth.Logout(ctx, middleware.RefreshFrom(ctx))
 	clear := a.clearCookie()
 	return dto.Logout204Response{Headers: dto.Logout204ResponseHeaders{SetCookie: &clear}}, nil
@@ -83,5 +92,7 @@ func (a *API) ChangePassword(ctx context.Context, req dto.ChangePasswordRequestO
 		}
 		return nil, err
 	}
+	uid := id.UserID
+	a.audit.Record(ctx, domain.AuditPasswordChange, nil, &uid, nil, middleware.ClientIPFrom(ctx))
 	return dto.ChangePassword204Response{}, nil
 }

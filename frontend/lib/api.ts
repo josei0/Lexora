@@ -316,6 +316,20 @@ export function setPrompt(key: string, content: string) {
   return api<void>(`/prompts/${key}`, { method: 'PUT', body: JSON.stringify({ content }) })
 }
 
+export type AuditLog = {
+  id: string
+  org_id?: string
+  user_id?: string
+  action: string
+  resource_id?: string
+  ip: string
+  created_at: string
+}
+
+export function listAuditLogs(limit = 100) {
+  return api<AuditLog[]>(`/audit-logs?limit=${limit}`)
+}
+
 export function exportChatUrl(chatId: string, format: 'word' | 'pdf') {
   return `${BASE}/chats/${chatId}/export?format=${format}`
 }

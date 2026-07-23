@@ -38,6 +38,10 @@ func (a *API) UploadDocument(ctx context.Context, req dto.UploadDocumentRequestO
 		}
 		return nil, err
 	}
+	uid := id.UserID
+	orgID := id.OrgID
+	docID := doc.ID
+	a.audit.Record(ctx, domain.AuditDocUpload, &orgID, &uid, &docID, middleware.ClientIPFrom(ctx))
 	return dto.UploadDocument202JSONResponse(toDocument(doc)), nil
 }
 

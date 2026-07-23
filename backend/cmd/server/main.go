@@ -84,9 +84,12 @@ func main() {
 	ragUC.SetPrompts(promptRepo)
 	orgUC.SetSeatGuard(subUC)
 
-	api := handler.New(authUC, orgUC, docUC, cfg.JWTRefreshTTL, cfg.CookieSecure)
+	auditRepo := postgres.NewAuditRepo(pool)
+	auditUC := usecase.NewAudit(auditRepo)
+
+	api := handler.New(authUC, orgUC, docUC, auditUC, cfg.JWTRefreshTTL, cfg.CookieSecure)
 	chatAPI := handler.NewChatAPI(ragUC)
-	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC)
+	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC, auditUC)
 	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, signer, cfg.CORSOrigins)
 	server := httpdelivery.NewServer(cfg.Port, router)
 

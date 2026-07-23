@@ -10,18 +10,35 @@ import {
   api,
   assignSubscription,
   getPrompt,
+  listAuditLogs,
   listPlans,
   setPrompt,
+  type AuditLog,
   type Plan,
 } from '@/lib/api'
 
 type Org = { id: string; name: string; slug: string }
+
+// action code → label bahasa
+const auditLabels: Record<string, string> = {
+  'login.ok': 'Login berhasil',
+  'login.fail': 'Login gagal',
+  logout: 'Logout',
+  'password.change': 'Ganti password',
+  'org.create': 'Buat organisasi',
+  'member.add': 'Tambah anggota',
+  'member.update': 'Ubah anggota',
+  'document.upload': 'Upload dokumen',
+  'subscription.assign': 'Assign langganan',
+  'prompt.update': 'Ubah system prompt',
+}
 
 export default function AdminPage() {
   const [orgs, setOrgs] = useState<Org[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [prompt, setPromptText] = useState('')
   const [promptSaved, setPromptSaved] = useState(false)
+  const [logs, setLogs] = useState<AuditLog[]>([])
   const [error, setError] = useState('')
 
   // subscription form
@@ -35,10 +52,12 @@ export default function AdminPage() {
       api<Org[]>('/organizations'),
       listPlans(),
       getPrompt('system'),
-    ]).then(([o, p, pr]) => {
+      listAuditLogs(50),
+    ]).then(([o, p, pr, l]) => {
       setOrgs(o)
       setPlans(p)
       setPromptText(pr.content)
+      setLogs(l)
     }).catch(e => setError(e instanceof ApiError ? e.message : 'gagal memuat data'))
   }, [])
 
@@ -111,6 +130,26 @@ export default function AdminPage() {
             {promptSaved && <p className="text-xs text-primary">✓ Tersimpan</p>}
             <Button type="submit">Simpan prompt</Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Log Aktivitas</CardTitle></CardHeader>
+        <CardContent>
+          {logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Belum ada aktivitas.</p>
+          ) : (
+            <div className="divide-y text-sm">
+              {logs.map(l => (
+                <div key={l.id} className="flex items-center justify-between py-2">
+                  <span>{auditLabels[l.action] ?? l.action}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(l.created_at).toLocaleString('id-ID')} · {l.ip || '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

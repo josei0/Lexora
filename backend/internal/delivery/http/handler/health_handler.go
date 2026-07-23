@@ -16,12 +16,13 @@ type API struct {
 	auth       *usecase.Auth
 	org        *usecase.Organization
 	docs       *usecase.Document
+	audit      *usecase.Audit
 	refreshTTL time.Duration
 	secure     bool // Secure flag on cookie (prod)
 }
 
-func New(auth *usecase.Auth, org *usecase.Organization, docs *usecase.Document, refreshTTL time.Duration, secure bool) *API {
-	return &API{auth: auth, org: org, docs: docs, refreshTTL: refreshTTL, secure: secure}
+func New(auth *usecase.Auth, org *usecase.Organization, docs *usecase.Document, audit *usecase.Audit, refreshTTL time.Duration, secure bool) *API {
+	return &API{auth: auth, org: org, docs: docs, audit: audit, refreshTTL: refreshTTL, secure: secure}
 }
 
 // liveness
