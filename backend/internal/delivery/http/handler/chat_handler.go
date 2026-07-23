@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -204,6 +205,7 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 		send(map[string]string{"token": tok})
 	})
 	if err != nil {
+		log.Printf("ask failed: %v", err)
 		send(map[string]string{"error": sseError(err)})
 		return
 	}
