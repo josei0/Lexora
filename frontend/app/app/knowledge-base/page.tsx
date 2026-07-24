@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ApiError, listDocuments, uploadDocument, type Document } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 
 const statusLabel: Record<Document['status'], string> = {
   uploaded: 'Menunggu',
@@ -21,6 +22,8 @@ const statusClass: Record<Document['status'], string> = {
 }
 
 export default function KnowledgeBasePage() {
+  const { role } = useAuth()
+  const canUpload = role?.org === 'org_admin'
   const [docs, setDocs] = useState<Document[]>([])
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -68,22 +71,26 @@ export default function KnowledgeBasePage() {
         <div>
           <h1 className="font-serif text-3xl">Pustaka Pengetahuan</h1>
           <p className="text-muted-foreground">
-            Unggah dokumen hukum (PDF, DOCX, TXT, maks 20MB). PDF harus versi teks; hasil scan belum didukung.
+            {canUpload
+              ? 'Unggah dokumen hukum (PDF, DOCX, TXT, maks 20MB). PDF harus versi teks; hasil scan belum didukung.'
+              : 'Dokumen di pustaka pengetahuan organisasi Anda. Hanya admin organisasi yang bisa mengunggah.'}
           </p>
         </div>
-        <div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".pdf,.docx,.txt"
-            onChange={onFile}
-            className="hidden"
-            id="doc-upload"
-          />
-          <Button size="lg" disabled={uploading} onClick={() => inputRef.current?.click()}>
-            {uploading ? 'Mengunggah…' : 'Unggah dokumen'}
-          </Button>
-        </div>
+        {canUpload && (
+          <div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".pdf,.docx,.txt"
+              onChange={onFile}
+              className="hidden"
+              id="doc-upload"
+            />
+            <Button size="lg" disabled={uploading} onClick={() => inputRef.current?.click()}>
+              {uploading ? 'Mengunggah…' : 'Unggah dokumen'}
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}

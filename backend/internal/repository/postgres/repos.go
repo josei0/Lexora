@@ -181,15 +181,15 @@ func NewRefreshRepo(db *pgxpool.Pool) *RefreshRepo { return &RefreshRepo{db} }
 
 func (r *RefreshRepo) Create(ctx context.Context, t *domain.RefreshToken) error {
 	return r.db.QueryRow(ctx, `
-		insert into refresh_tokens (user_id, token_hash, expires_at) values ($1, $2, $3) returning id`,
-		t.UserID, t.TokenHash, t.ExpiresAt).Scan(&t.ID)
+		insert into refresh_tokens (user_id, token_hash, family_id, expires_at) values ($1, $2, $3, $4) returning id`,
+		t.UserID, t.TokenHash, t.FamilyID, t.ExpiresAt).Scan(&t.ID)
 }
 
 func (r *RefreshRepo) ByHash(ctx context.Context, hash string) (*domain.RefreshToken, error) {
 	var t domain.RefreshToken
 	err := r.db.QueryRow(ctx, `
-		select id, user_id, token_hash, expires_at, revoked_at from refresh_tokens where token_hash = $1`,
-		hash).Scan(&t.ID, &t.UserID, &t.TokenHash, &t.ExpiresAt, &t.RevokedAt)
+		select id, user_id, family_id, token_hash, expires_at, revoked_at from refresh_tokens where token_hash = $1`,
+		hash).Scan(&t.ID, &t.UserID, &t.FamilyID, &t.TokenHash, &t.ExpiresAt, &t.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -206,6 +206,12 @@ func (r *RefreshRepo) Revoke(ctx context.Context, id uuid.UUID) error {
 
 func (r *RefreshRepo) RevokeByHash(ctx context.Context, hash string) error {
 	_, err := r.db.Exec(ctx, `update refresh_tokens set revoked_at = now() where token_hash = $1`, hash)
+	return err
+}
+
+// cabut se-family
+func (r *RefreshRepo) RevokeFamily(ctx context.Context, familyID uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `update refresh_tokens set revoked_at = now() where family_id = $1 and revoked_at is null`, familyID)
 	return err
 }
 

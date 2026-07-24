@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -13,16 +12,21 @@ import (
 
 // implements dto.StrictServerInterface
 type API struct {
-	auth       *usecase.Auth
-	org        *usecase.Organization
-	docs       *usecase.Document
-	audit      *usecase.Audit
-	refreshTTL time.Duration
-	secure     bool // Secure flag on cookie (prod)
+	auth         *usecase.Auth
+	org          *usecase.Organization
+	docs         *usecase.Document
+	audit        *usecase.Audit
+	refreshTTL   time.Duration
+	secure       bool            // secure cookie
+	adminOrigins map[string]bool // origin admin sah
 }
 
-func New(auth *usecase.Auth, org *usecase.Organization, docs *usecase.Document, audit *usecase.Audit, refreshTTL time.Duration, secure bool) *API {
-	return &API{auth: auth, org: org, docs: docs, audit: audit, refreshTTL: refreshTTL, secure: secure}
+func New(auth *usecase.Auth, org *usecase.Organization, docs *usecase.Document, audit *usecase.Audit, refreshTTL time.Duration, secure bool, adminOrigins []string) *API {
+	set := make(map[string]bool, len(adminOrigins))
+	for _, o := range adminOrigins {
+		set[o] = true
+	}
+	return &API{auth: auth, org: org, docs: docs, audit: audit, refreshTTL: refreshTTL, secure: secure, adminOrigins: set}
 }
 
 // liveness
@@ -30,23 +34,31 @@ func (a *API) GetHealth(ctx context.Context, _ dto.GetHealthRequestObject) (dto.
 	return dto.GetHealth200JSONResponse{Status: "ok"}, nil
 }
 
-// build refresh cookie string
-func (a *API) cookie(value string, maxAge time.Duration) string {
-	c := &http.Cookie{
-		Name:     middleware.RefreshCookieName,
+// build cookie refresh
+func (a *API) refreshCookie(name, value string, maxAge time.Duration) string {
+	return (&http.Cookie{
+		Name:     name,
 		Value:    value,
-		Path:     "/auth",
+		Path:     "/",
 		HttpOnly: true,
 		Secure:   a.secure,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(maxAge.Seconds()),
-	}
-	return c.String()
+	}).String()
+}
+
+func (a *API) cookie(value string, maxAge time.Duration) string {
+	return a.refreshCookie(middleware.RefreshCookieName(a.secure), value, maxAge)
 }
 
 func (a *API) clearCookie() string {
-	return fmt.Sprint((&http.Cookie{
-		Name: middleware.RefreshCookieName, Value: "", Path: "/auth",
-		HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteStrictMode, MaxAge: -1,
-	}).String())
+	return a.refreshCookie(middleware.RefreshCookieName(a.secure), "", -1)
+}
+
+func (a *API) adminCookie(value string, maxAge time.Duration) string {
+	return a.refreshCookie(middleware.AdminRefreshCookieName(a.secure), value, maxAge)
+}
+
+func (a *API) clearAdminCookie() string {
+	return a.refreshCookie(middleware.AdminRefreshCookieName(a.secure), "", -1)
 }

@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -42,10 +44,12 @@ type RAG struct {
 	maxChunks int
 	billing   *Billing                // ponytail: nil = no quota check (org belum subscribe)
 	prompts   domain.PromptRepository // ponytail: nil = pakai systemPrompt hardcoded
+	extractor domain.Extractor        // ponytail: nil = lampiran dokumen diabaikan
 }
 
 func (r *RAG) SetBilling(b *Billing)                { r.billing = b }
 func (r *RAG) SetPrompts(p domain.PromptRepository) { r.prompts = p }
+func (r *RAG) SetExtractor(e domain.Extractor)      { r.extractor = e }
 
 // system prompt dari DB kalau ada, fallback ke konstanta
 func (r *RAG) systemPrompt(ctx context.Context) string {
@@ -106,9 +110,9 @@ func (r *RAG) Delete(ctx context.Context, id, orgID, userID uuid.UUID) error {
 }
 
 // jawab pertanyaan, token dialirkan lewat onToken
-func (r *RAG) Ask(ctx context.Context, chatID, orgID, userID uuid.UUID, question string, onToken func(string)) (*domain.Message, error) {
+func (r *RAG) Ask(ctx context.Context, chatID, orgID, userID uuid.UUID, question string, atts []domain.Attachment, onToken func(string)) (*domain.Message, error) {
 	question = strings.TrimSpace(question)
-	if question == "" {
+	if question == "" && len(atts) == 0 {
 		return nil, domain.ErrInvalidUpload
 	}
 	chat, err := r.chats.ByID(ctx, chatID, orgID, userID)
@@ -128,12 +132,23 @@ func (r *RAG) Ask(ctx context.Context, chatID, orgID, userID uuid.UUID, question
 		return nil, err
 	}
 
-	userMsg := &domain.Message{ChatID: chat.ID, Role: domain.RoleUser, Content: question}
+	images, docText := r.splitAttachments(atts)
+
+	title := question
+	if title == "" {
+		title = "Lampiran"
+	}
+	userMsg := &domain.Message{ChatID: chat.ID, Role: domain.RoleUser, Content: title}
 	if err := r.chats.AddMessage(ctx, userMsg); err != nil {
 		return nil, err
 	}
 	if len(history) == 0 {
-		_ = r.chats.Rename(ctx, chat.ID, orgID, userID, trimTitle(question))
+		_ = r.chats.Rename(ctx, chat.ID, orgID, userID, trimTitle(title))
+	}
+
+	// ada lampiran: langsung ke LLM, tanpa RAG
+	if len(images) > 0 || docText != "" {
+		return r.answerWithAttachments(ctx, chat, orgID, userID, question, docText, images, history, onToken)
 	}
 
 	hits, err := r.retrieve(ctx, orgID, question)
@@ -160,6 +175,63 @@ func (r *RAG) Ask(ctx context.Context, chatID, orgID, userID uuid.UUID, question
 		return nil, err
 	}
 	return r.saveAnswer(ctx, chat, orgID, userID, sb.String(), hits, usage)
+}
+
+// gambar -> data URL vision; dokumen -> teks (extract). Lampiran tak dikenal diabaikan.
+func (r *RAG) splitAttachments(atts []domain.Attachment) (images []string, docText string) {
+	var docs strings.Builder
+	for _, a := range atts {
+		if strings.HasPrefix(a.Mime, "image/") {
+			images = append(images, "data:"+a.Mime+";base64,"+base64.StdEncoding.EncodeToString(a.Data))
+			continue
+		}
+		if r.extractor == nil {
+			continue
+		}
+		if txt := r.extractText(a); strings.TrimSpace(txt) != "" {
+			fmt.Fprintf(&docs, "\n\n[Dokumen: %s]\n%s", a.Name, txt)
+		}
+	}
+	return images, docs.String()
+}
+
+// tulis ke temp file lalu extract (extractor butuh path)
+func (r *RAG) extractText(a domain.Attachment) string {
+	f, err := os.CreateTemp("", "att-*")
+	if err != nil {
+		return ""
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(a.Data); err != nil {
+		f.Close()
+		return ""
+	}
+	f.Close()
+	pages, err := r.extractor.Extract(f.Name(), a.Mime)
+	if err != nil {
+		return ""
+	}
+	return strings.Join(pages, "\n")
+}
+
+// jawab dengan lampiran (gambar/dokumen), tanpa RAG
+func (r *RAG) answerWithAttachments(ctx context.Context, chat *domain.Chat, orgID, userID uuid.UUID, question, docText string, images []string, history []domain.Message, onToken func(string)) (*domain.Message, error) {
+	content := question
+	if docText != "" {
+		content = "DOKUMEN LAMPIRAN:" + docText + "\n\nPERTANYAAN:\n" + question
+	}
+	msgs := buildTurns(history, r.maxTurns)
+	msgs = append(msgs, domain.ChatMessage{Role: domain.RoleUser, Content: content, Images: images})
+
+	var sb strings.Builder
+	usage, err := r.llm.Stream(ctx, generalPrompt, msgs, func(tok string) {
+		sb.WriteString(tok)
+		onToken(tok)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.saveAnswer(ctx, chat, orgID, userID, sb.String(), nil, usage)
 }
 
 func (r *RAG) retrieve(ctx context.Context, orgID uuid.UUID, question string) ([]domain.SearchHit, error) {

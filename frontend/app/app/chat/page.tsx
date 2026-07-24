@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, Trash2, Download } from 'lucide-react'
+import { Plus, Trash2, Download, Paperclip, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -28,7 +28,9 @@ export default function ChatPage() {
   const [citations, setCitations] = useState<Citation[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const loadChats = useCallback(async () => {
     try {
@@ -79,28 +81,31 @@ export default function ChatPage() {
   async function send(e: React.FormEvent) {
     e.preventDefault()
     const question = input.trim()
-    if (!question || busy) return
+    if ((!question && files.length === 0) || busy) return
 
+    const sent = files
+    const label = question || sent.map((f) => `📎 ${f.name}`).join(' ')
     setError('')
     setBusy(true)
     setInput('')
+    setFiles([])
     setStreaming('')
     setCitations([])
     setMessages((prev) => [
       ...prev,
-      { id: `local-${Date.now()}`, role: 'user', content: question, created_at: '', citations: [] },
+      { id: `local-${Date.now()}`, role: 'user', content: label, created_at: '', citations: [] },
     ])
 
     try {
       let chatId = activeId
       if (!chatId) {
-        const chat = await createChat(question)
+        const chat = await createChat(question || 'Lampiran')
         chatId = chat.id
         setActiveId(chat.id)
       }
 
       let answer = ''
-      await askStream(chatId, question, {
+      await askStream(chatId, question, sent, {
         onToken: (tok) => {
           answer += tok
           setStreaming(answer)
@@ -193,14 +198,53 @@ export default function ChatPage() {
 
         {error && <p className="py-2 text-sm text-destructive">{error}</p>}
 
+        {files.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {files.map((f, i) => (
+              <span key={`${f.name}-${i}`} className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs">
+                <Paperclip className="size-3" />
+                <span className="max-w-40 truncate">{f.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Hapus ${f.name}`}
+                  onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <form onSubmit={send} className="mt-4 flex gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.docx,.txt"
+            className="hidden"
+            onChange={(e) => {
+              setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])])
+              e.target.value = ''
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            disabled={busy}
+            onClick={() => fileRef.current?.click()}
+            aria-label="Lampirkan file"
+          >
+            <Paperclip className="size-4" />
+          </Button>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Tulis pertanyaan hukum…"
             disabled={busy}
           />
-          <Button type="submit" disabled={busy || !input.trim()}>
+          <Button type="submit" disabled={busy || (!input.trim() && files.length === 0)}>
             {busy ? 'Menjawab…' : 'Kirim'}
           </Button>
         </form>

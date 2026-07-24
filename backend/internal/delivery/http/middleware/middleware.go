@@ -30,13 +30,24 @@ func SecureHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func CORS(allowed []string) func(http.Handler) http.Handler {
-	set := make(map[string]bool, len(allowed))
-	for _, o := range allowed {
+func originSet(origins []string) map[string]bool {
+	set := make(map[string]bool, len(origins))
+	for _, o := range origins {
 		set[o] = true
 	}
+	return set
+}
+
+// CORS per-grup
+// ponytail: seleksi by path, host-check nyusul D2
+func CORS(app, admin []string) func(http.Handler) http.Handler {
+	appSet, adminSet := originSet(app), originSet(admin)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			set := appSet
+			if strings.HasPrefix(r.URL.Path, "/auth/admin/") {
+				set = adminSet
+			}
 			origin := r.Header.Get("Origin")
 			if origin != "" && set[origin] {
 				h := w.Header()
@@ -44,6 +55,7 @@ func CORS(allowed []string) func(http.Handler) http.Handler {
 				h.Set("Access-Control-Allow-Credentials", "true")
 				h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				h.Set("Access-Control-Max-Age", "600") // cache preflight
 				h.Set("Vary", "Origin")
 			}
 			if r.Method == http.MethodOptions {
@@ -111,10 +123,12 @@ func (l *limiter) allow(key string) bool {
 	return true
 }
 
+// throttle per-ip, bukan lockout akun
 func RateLimitLogin(next http.Handler) http.Handler {
 	l := newLimiter(5, time.Minute)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/auth/login") && !l.allow(clientIP(r)) {
+		p := r.URL.Path
+		if (strings.HasSuffix(p, "/auth/login") || strings.HasSuffix(p, "/auth/admin/login")) && !l.allow(clientIP(r)) {
 			writeError(w, http.StatusTooManyRequests, "rate_limited", "terlalu banyak percobaan, coba lagi nanti")
 			return
 		}

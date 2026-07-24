@@ -86,7 +86,7 @@ func TestAskKeepsOnlyCitedChunks(t *testing.T) {
 	hits := []domain.SearchHit{hit("uu-a.pdf", 3, 0.8), hit("uu-b.pdf", 9, 0.6)}
 	rag, chats, chat := setup(hits, "Syaratnya diatur di Pasal 222 [2].")
 
-	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "syarat PKPU?", func(string) {})
+	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "syarat PKPU?", nil, func(string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestAskWithoutCitationMarkerSavesNone(t *testing.T) {
 	hits := []domain.SearchHit{hit("uu-a.pdf", 3, 0.8)}
 	rag, _, chat := setup(hits, "Dokumen tidak memuat informasi tersebut.")
 
-	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "resep kue?", func(string) {})
+	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "resep kue?", nil, func(string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestAskNoRelevantChunkFallsBackToGeneralChat(t *testing.T) {
 	rag, _, chat := setup(hits, "Halo, ada yang bisa dibantu?")
 
 	var streamed strings.Builder
-	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "halo", func(tok string) {
+	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "halo", nil, func(tok string) {
 		streamed.WriteString(tok)
 	})
 	if err != nil {
@@ -140,7 +140,7 @@ func TestAskNoRelevantChunkFallsBackToGeneralChat(t *testing.T) {
 func TestAskRejectsOtherTenantChat(t *testing.T) {
 	rag, _, chat := setup([]domain.SearchHit{hit("uu-a.pdf", 1, 0.9)}, "jawab [1]")
 
-	_, err := rag.Ask(context.Background(), chat.ID, uuid.New(), chat.UserID, "halo", func(string) {})
+	_, err := rag.Ask(context.Background(), chat.ID, uuid.New(), chat.UserID, "halo", nil, func(string) {})
 	if err != domain.ErrNotFound {
 		t.Fatalf("chat org lain harusnya ErrNotFound, dapat %v", err)
 	}

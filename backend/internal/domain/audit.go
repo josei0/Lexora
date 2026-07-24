@@ -10,6 +10,8 @@ import (
 const (
 	AuditLoginOK        = "login.ok"
 	AuditLoginFail      = "login.fail"
+	AuditAdminLoginOK   = "admin.login.ok"
+	AuditAdminLoginFail = "admin.login.fail"
 	AuditLogout         = "logout"
 	AuditPasswordChange = "password.change"
 	AuditOrgCreate      = "org.create"

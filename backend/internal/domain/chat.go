@@ -71,6 +71,14 @@ type ChatRepository interface {
 type ChatMessage struct {
 	Role    string
 	Content string
+	Images  []string // data URL (data:<mime>;base64,...) untuk vision; kosong = teks biasa
+}
+
+// lampiran chat sekali-pakai (gambar untuk vision, dokumen untuk konteks). Tidak dipersist.
+type Attachment struct {
+	Name string
+	Mime string
+	Data []byte
 }
 
 type LLMUsage struct {

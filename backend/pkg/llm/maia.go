@@ -46,7 +46,19 @@ type streamOptions struct {
 
 type chatMsg struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"` // string, atau []part untuk pesan bergambar
+}
+
+// OpenAI multimodal: content jadi array {type:text|image_url}
+func msgContent(m domain.ChatMessage) any {
+	if len(m.Images) == 0 {
+		return m.Content
+	}
+	parts := []any{map[string]any{"type": "text", "text": m.Content}}
+	for _, url := range m.Images {
+		parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
+	}
+	return parts
 }
 
 type chatChunk struct {
@@ -69,7 +81,7 @@ func (m *Maia) Stream(ctx context.Context, system string, msgs []domain.ChatMess
 		all = append(all, chatMsg{Role: "system", Content: system})
 	}
 	for _, msg := range msgs {
-		all = append(all, chatMsg{Role: msg.Role, Content: msg.Content})
+		all = append(all, chatMsg{Role: msg.Role, Content: msgContent(msg)})
 	}
 
 	body, err := json.Marshal(chatReq{

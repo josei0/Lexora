@@ -15,16 +15,17 @@ import (
 )
 
 type Auth struct {
-	users      domain.UserRepository
-	members    domain.MembershipRepository
-	refresh    domain.RefreshTokenRepository
-	signer     *jwt.Signer
-	refreshTTL time.Duration
-	loginLimit *acctLimiter
+	users       domain.UserRepository
+	members     domain.MembershipRepository
+	refresh     domain.RefreshTokenRepository
+	signer      *jwt.Signer // token app (aud=app)
+	adminSigner *jwt.Signer // token admin (aud=admin, kunci terpisah)
+	refreshTTL  time.Duration
+	loginLimit  *acctLimiter
 }
 
-func NewAuth(u domain.UserRepository, m domain.MembershipRepository, r domain.RefreshTokenRepository, s *jwt.Signer, refreshTTL time.Duration) *Auth {
-	return &Auth{u, m, r, s, refreshTTL, newAcctLimiter(10, time.Minute)}
+func NewAuth(u domain.UserRepository, m domain.MembershipRepository, r domain.RefreshTokenRepository, s, admin *jwt.Signer, refreshTTL time.Duration) *Auth {
+	return &Auth{u, m, r, s, admin, refreshTTL, newAcctLimiter(10, time.Minute)}
 }
 
 type Tokens struct {
@@ -53,10 +54,36 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*Tokens, erro
 	if !u.IsActive {
 		return nil, domain.ErrInactive
 	}
-	return a.issue(ctx, u)
+	// super_admin lewat panel admin
+	if u.SystemRole == domain.SystemRoleSuperAdmin {
+		return nil, domain.ErrInvalidCreds
+	}
+	return a.issue(ctx, u, a.signer, uuid.Nil)
 }
 
-func (a *Auth) issue(ctx context.Context, u *domain.User) (*Tokens, error) {
+// login panel admin, super_admin only
+func (a *Auth) AdminLogin(ctx context.Context, email, password string) (*Tokens, error) {
+	u, err := a.users.ByEmail(ctx, email)
+	if err != nil {
+		_ = hash.Verify(password, dummyHash)
+		return nil, domain.ErrInvalidCreds
+	}
+	if err := hash.Verify(password, u.PasswordHash); err != nil {
+		return nil, domain.ErrInvalidCreds
+	}
+	if !u.IsActive {
+		return nil, domain.ErrInactive
+	}
+	// non-super_admin ditolak
+	if u.SystemRole != domain.SystemRoleSuperAdmin {
+		return nil, domain.ErrInvalidCreds
+	}
+	// ponytail: TOTP nyusul C3
+	return a.issue(ctx, u, a.adminSigner, uuid.Nil)
+}
+
+// nil = sesi baru
+func (a *Auth) issue(ctx context.Context, u *domain.User, signer *jwt.Signer, familyID uuid.UUID) (*Tokens, error) {
 	id := domain.Identity{UserID: u.ID, SystemRole: u.SystemRole}
 	if u.SystemRole != domain.SystemRoleSuperAdmin {
 		m, err := a.members.Primary(ctx, u.ID)
@@ -67,7 +94,7 @@ func (a *Auth) issue(ctx context.Context, u *domain.User) (*Tokens, error) {
 		id.OrgRole = m.Role
 	}
 
-	access, err := a.signer.Sign(id)
+	access, err := signer.Sign(id)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +103,10 @@ func (a *Auth) issue(ctx context.Context, u *domain.User) (*Tokens, error) {
 	if err != nil {
 		return nil, err
 	}
-	rt := &domain.RefreshToken{UserID: u.ID, TokenHash: hashToken(raw), ExpiresAt: time.Now().Add(a.refreshTTL)}
+	if familyID == uuid.Nil {
+		familyID = uuid.New()
+	}
+	rt := &domain.RefreshToken{UserID: u.ID, FamilyID: familyID, TokenHash: hashToken(raw), ExpiresAt: time.Now().Add(a.refreshTTL)}
 	if err := a.refresh.Create(ctx, rt); err != nil {
 		return nil, err
 	}
@@ -84,11 +114,25 @@ func (a *Auth) issue(ctx context.Context, u *domain.User) (*Tokens, error) {
 }
 
 func (a *Auth) Refresh(ctx context.Context, raw string) (*Tokens, error) {
+	return a.rotate(ctx, raw, a.signer, false)
+}
+
+// rotasi sesi admin
+func (a *Auth) AdminRefresh(ctx context.Context, raw string) (*Tokens, error) {
+	return a.rotate(ctx, raw, a.adminSigner, true)
+}
+
+func (a *Auth) rotate(ctx context.Context, raw string, signer *jwt.Signer, superAdminOnly bool) (*Tokens, error) {
 	rt, err := a.refresh.ByHash(ctx, hashToken(raw))
 	if err != nil {
 		return nil, domain.ErrInvalidToken
 	}
-	if rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
+	// reuse = theft, cabut family
+	if rt.RevokedAt != nil {
+		_ = a.refresh.RevokeFamily(ctx, rt.FamilyID)
+		return nil, domain.ErrInvalidToken
+	}
+	if time.Now().After(rt.ExpiresAt) {
 		return nil, domain.ErrInvalidToken
 	}
 	u, err := a.users.ByID(ctx, rt.UserID)
@@ -98,10 +142,13 @@ func (a *Auth) Refresh(ctx context.Context, raw string) (*Tokens, error) {
 	if !u.IsActive {
 		return nil, domain.ErrInactive
 	}
+	if superAdminOnly && u.SystemRole != domain.SystemRoleSuperAdmin {
+		return nil, domain.ErrInvalidToken
+	}
 	if err := a.refresh.Revoke(ctx, rt.ID); err != nil {
 		return nil, err
 	}
-	return a.issue(ctx, u)
+	return a.issue(ctx, u, signer, rt.FamilyID)
 }
 
 func (a *Auth) Logout(ctx context.Context, raw string) error {

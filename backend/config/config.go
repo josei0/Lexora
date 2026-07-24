@@ -12,9 +12,10 @@ type Config struct {
 	DatabaseURL string
 	QdrantURL   string
 
-	JWTSecret     string
-	JWTAccessTTL  time.Duration
-	JWTRefreshTTL time.Duration
+	JWTSecret      string
+	JWTAdminSecret string // kunci admin, terpisah
+	JWTAccessTTL   time.Duration
+	JWTRefreshTTL  time.Duration
 
 	ChatModel   string
 	RAGTopK     int
@@ -28,8 +29,9 @@ type Config struct {
 
 	StorageDir string
 
-	CORSOrigins  []string
-	CookieSecure bool
+	CORSOriginsApp   []string // origin app
+	CORSOriginsAdmin []string // origin admin
+	CookieSecure     bool
 
 	SuperAdminEmail    string
 	SuperAdminPassword string
@@ -41,6 +43,7 @@ func Load() (*Config, error) {
 		DatabaseURL:        env("DATABASE_URL", ""),
 		QdrantURL:          env("QDRANT_URL", "http://localhost:6333"),
 		JWTSecret:          env("JWT_SECRET", ""),
+		JWTAdminSecret:     env("JWT_ADMIN_SECRET", ""),
 		ChatModel:          env("CHAT_MODEL", "maia/claude-sonnet-4-5"),
 		EmbeddingProvider:  env("EMBEDDING_PROVIDER", "maia"),
 		EmbeddingURL:       env("EMBEDDING_URL", "https://api.maiarouter.ai/v1"),
@@ -56,7 +59,8 @@ func Load() (*Config, error) {
 	c.EmbeddingDim = envInt("EMBEDDING_DIM", 3072)
 	c.RAGTopK = envInt("RAG_TOP_K", 5)
 	c.RAGMinScore = float32(envInt("RAG_MIN_SCORE_PCT", 35)) / 100
-	c.CORSOrigins = splitCSV(env("CORS_ORIGINS", "http://localhost:3000"))
+	c.CORSOriginsApp = splitCSV(env("CORS_ORIGINS_APP", "http://localhost:3000"))
+	c.CORSOriginsAdmin = splitCSV(env("CORS_ORIGINS_ADMIN", "https://admin.lvh.me"))
 	c.CookieSecure = env("COOKIE_SECURE", "false") == "true"
 
 	if c.DatabaseURL == "" {
@@ -64,6 +68,9 @@ func Load() (*Config, error) {
 	}
 	if c.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET required")
+	}
+	if c.JWTAdminSecret == "" {
+		return nil, fmt.Errorf("JWT_ADMIN_SECRET required")
 	}
 	return c, nil
 }

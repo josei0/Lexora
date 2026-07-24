@@ -8,13 +8,20 @@ import (
 	"github.com/lexora/backend/internal/domain"
 )
 
+// token audiences
+const (
+	AudienceApp   = "app"
+	AudienceAdmin = "admin"
+)
+
 type Signer struct {
-	secret []byte
-	ttl    time.Duration
+	secret   []byte
+	ttl      time.Duration
+	audience string
 }
 
-func New(secret string, ttl time.Duration) *Signer {
-	return &Signer{secret: []byte(secret), ttl: ttl}
+func New(secret string, ttl time.Duration, audience string) *Signer {
+	return &Signer{secret: []byte(secret), ttl: ttl, audience: audience}
 }
 
 type claims struct {
@@ -34,6 +41,7 @@ func (s *Signer) Sign(id domain.Identity) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   id.UserID.String(),
 			Issuer:    issuer,
+			Audience:  jwt.ClaimStrings{s.audience},
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.ttl)),
 		},
@@ -51,7 +59,7 @@ func (s *Signer) Verify(token string) (domain.Identity, error) {
 			return nil, domain.ErrInvalidToken
 		}
 		return s.secret, nil
-	}, jwt.WithIssuer(issuer), jwt.WithExpirationRequired())
+	}, jwt.WithIssuer(issuer), jwt.WithAudience(s.audience), jwt.WithExpirationRequired())
 	if err != nil {
 		return domain.Identity{}, domain.ErrInvalidToken
 	}

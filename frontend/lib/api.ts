@@ -11,6 +11,21 @@ export function getAccessToken() {
   return accessToken
 }
 
+export type Role = { system: string; org: string }
+
+// decode klaim role dari JWT access token (untuk gating UI, bukan otorisasi)
+export function currentRole(): Role | null {
+  if (!accessToken) return null
+  try {
+    const b64 = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : ''
+    const c = JSON.parse(atob(b64 + pad))
+    return { system: c.sys_role ?? 'none', org: c.org_role ?? '' }
+  } catch {
+    return null
+  }
+}
+
 export type Tokens = {
   access_token: string
   token_type: string
@@ -187,17 +202,19 @@ type StreamHandlers = {
 }
 
 // SSE lewat fetch + ReadableStream (EventSource tidak bisa kirim bearer)
-export async function askStream(chatId: string, content: string, h: StreamHandlers) {
-  const doFetch = () =>
-    fetch(`${BASE}/chats/${chatId}/messages`, {
+export async function askStream(chatId: string, content: string, files: File[], h: StreamHandlers) {
+  const doFetch = () => {
+    // multipart: browser set boundary sendiri, jangan set Content-Type
+    const form = new FormData()
+    form.append('content', content)
+    for (const f of files) form.append('files', f)
+    return fetch(`${BASE}/chats/${chatId}/messages`, {
       method: 'POST',
       credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: JSON.stringify({ content }),
+      headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+      body: form,
     })
+  }
 
   let res = await doFetch()
   if (res.status === 401) {

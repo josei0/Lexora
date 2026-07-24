@@ -17,7 +17,30 @@ const (
 	clientIPKey
 )
 
-const RefreshCookieName = "lexora_refresh"
+// __Host- butuh Secure, dev pakai nama polos
+func RefreshCookieName(secure bool) string {
+	if secure {
+		return "__Host-lexora_rt"
+	}
+	return "lexora_rt"
+}
+
+func AdminRefreshCookieName(secure bool) string {
+	if secure {
+		return "__Host-lexora_admin_rt"
+	}
+	return "lexora_admin_rt"
+}
+
+// coba dua nama
+func readUserRefresh(r *http.Request) string {
+	for _, name := range []string{RefreshCookieName(true), RefreshCookieName(false)} {
+		if c, err := r.Cookie(name); err == nil {
+			return c.Value
+		}
+	}
+	return ""
+}
 
 // pull identity from ctx
 func IdentityFrom(ctx context.Context) (domain.Identity, bool) {
@@ -45,22 +68,24 @@ func ClientIP(next http.Handler) http.Handler {
 	})
 }
 
-// verify bearer -> inject identity. invalid token -> 401. absent -> continue
-func Auth(signer *jwt.Signer) func(http.Handler) http.Handler {
+// verify bearer, terima aud app+admin
+func Auth(user, admin *jwt.Signer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := r.Header.Get("Authorization")
-			if strings.HasPrefix(h, "Bearer ") {
-				id, err := signer.Verify(strings.TrimPrefix(h, "Bearer "))
+			if raw, ok := strings.CutPrefix(h, "Bearer "); ok {
+				id, err := user.Verify(raw)
 				if err != nil {
-					writeError(w, http.StatusUnauthorized, "unauthorized", "sesi tidak valid")
-					return
+					if id, err = admin.Verify(raw); err != nil {
+						writeError(w, http.StatusUnauthorized, "unauthorized", "sesi tidak valid")
+						return
+					}
 				}
 				r = r.WithContext(context.WithValue(r.Context(), identityKey, id))
 			}
 			// inject refresh cookie for /auth/refresh + /auth/logout
-			if c, err := r.Cookie(RefreshCookieName); err == nil {
-				r = r.WithContext(context.WithValue(r.Context(), refreshKey, c.Value))
+			if raw := readUserRefresh(r); raw != "" {
+				r = r.WithContext(context.WithValue(r.Context(), refreshKey, raw))
 			}
 			next.ServeHTTP(w, r)
 		})

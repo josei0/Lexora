@@ -40,14 +40,15 @@ func main() {
 	defer pool.Close()
 	log.Println("postgres connected")
 
-	signer := jwt.New(cfg.JWTSecret, cfg.JWTAccessTTL)
+	signer := jwt.New(cfg.JWTSecret, cfg.JWTAccessTTL, jwt.AudienceApp)
+	adminSigner := jwt.New(cfg.JWTAdminSecret, cfg.JWTAccessTTL, jwt.AudienceAdmin)
 	userRepo := postgres.NewUserRepo(pool)
 	orgRepo := postgres.NewOrgRepo(pool)
 	memberRepo := postgres.NewMembershipRepo(pool)
 	refreshRepo := postgres.NewRefreshRepo(pool)
 	docRepo := postgres.NewDocumentRepo(pool)
 
-	authUC := usecase.NewAuth(userRepo, memberRepo, refreshRepo, signer, cfg.JWTRefreshTTL)
+	authUC := usecase.NewAuth(userRepo, memberRepo, refreshRepo, signer, adminSigner, cfg.JWTRefreshTTL)
 	orgUC := usecase.NewOrganization(orgRepo, userRepo, memberRepo)
 
 	store := storage.NewLocal(cfg.StorageDir)
@@ -77,15 +78,16 @@ func main() {
 
 	ragUC.SetBilling(billingUC)
 	ragUC.SetPrompts(promptRepo)
+	ragUC.SetExtractor(extractor)
 	orgUC.SetSeatGuard(subUC)
 
 	auditRepo := postgres.NewAuditRepo(pool)
 	auditUC := usecase.NewAudit(auditRepo)
 
-	api := handler.New(authUC, orgUC, docUC, auditUC, cfg.JWTRefreshTTL, cfg.CookieSecure)
+	api := handler.New(authUC, orgUC, docUC, auditUC, cfg.JWTRefreshTTL, cfg.CookieSecure, cfg.CORSOriginsAdmin)
 	chatAPI := handler.NewChatAPI(ragUC)
 	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC, auditUC)
-	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, signer, cfg.CORSOrigins)
+	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, signer, adminSigner, cfg.CORSOriginsApp, cfg.CORSOriginsAdmin)
 	server := httpdelivery.NewServer(cfg.Port, router)
 
 	go func() {

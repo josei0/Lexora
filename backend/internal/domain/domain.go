@@ -67,6 +67,7 @@ type Member struct {
 type RefreshToken struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
+	FamilyID  uuid.UUID // reuse detection
 	TokenHash string
 	ExpiresAt time.Time
 	RevokedAt *time.Time
@@ -110,4 +111,5 @@ type RefreshTokenRepository interface {
 	ByHash(ctx context.Context, hash string) (*RefreshToken, error)
 	Revoke(ctx context.Context, id uuid.UUID) error
 	RevokeByHash(ctx context.Context, hash string) error
+	RevokeFamily(ctx context.Context, familyID uuid.UUID) error // cabut se-family
 }

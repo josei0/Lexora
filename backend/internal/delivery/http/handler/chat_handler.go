@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -171,10 +173,8 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
-		Content string `json:"content"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	content, atts, err := parseAsk(r)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "body tidak valid")
 		return
 	}
@@ -201,7 +201,7 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	msg, err := a.rag.Ask(r.Context(), chatID, id.OrgID, id.UserID, body.Content, func(tok string) {
+	msg, err := a.rag.Ask(r.Context(), chatID, id.OrgID, id.UserID, content, atts, func(tok string) {
 		send(map[string]string{"token": tok})
 	})
 	if err != nil {
@@ -210,6 +210,40 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(map[string]any{"done": true, "message_id": msg.ID, "citations": toCitationsJSON(msg.Citations)})
+}
+
+// baca pertanyaan + lampiran dari multipart (ada file) atau JSON (teks saja)
+func parseAsk(r *http.Request) (string, []domain.Attachment, error) {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			return "", nil, err
+		}
+		var atts []domain.Attachment
+		for _, fh := range r.MultipartForm.File["files"] {
+			f, err := fh.Open()
+			if err != nil {
+				return "", nil, err
+			}
+			data, err := io.ReadAll(f)
+			f.Close()
+			if err != nil {
+				return "", nil, err
+			}
+			mime := fh.Header.Get("Content-Type")
+			if mime == "" {
+				mime = http.DetectContentType(data)
+			}
+			atts = append(atts, domain.Attachment{Name: fh.Filename, Mime: mime, Data: data})
+		}
+		return r.FormValue("content"), atts, nil
+	}
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", nil, err
+	}
+	return body.Content, nil, nil
 }
 
 func sseError(err error) string {
