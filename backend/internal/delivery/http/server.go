@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// http server + graceful shutdown
 type Server struct {
 	srv *http.Server
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/lexora/backend/pkg/hash"
 )
 
-// organization + member usecase
 type Organization struct {
 	orgs    domain.OrganizationRepository
 	users   domain.UserRepository
@@ -43,7 +42,6 @@ func (o *Organization) Create(ctx context.Context, name, slug, adminEmail, admin
 	return org, admin, nil
 }
 
-// add member to caller's org (org admin only)
 func (o *Organization) AddMember(ctx context.Context, orgID uuid.UUID, email, fullName, role string) (*NewMember, error) {
 	if role != domain.OrgRoleAdmin && role != domain.OrgRoleMember {
 		return nil, domain.ErrForbidden
@@ -56,7 +54,6 @@ func (o *Organization) AddMember(ctx context.Context, orgID uuid.UUID, email, fu
 	return o.addUser(ctx, orgID, email, fullName, role)
 }
 
-// create user + membership with temp password
 func (o *Organization) addUser(ctx context.Context, orgID uuid.UUID, email, fullName, role string) (*NewMember, error) {
 	temp, err := tempPassword()
 	if err != nil {
@@ -110,7 +107,6 @@ func (o *Organization) UpdateMember(ctx context.Context, orgID, userID uuid.UUID
 			return nil, err
 		}
 	}
-	// return fresh view
 	members, err := o.members.ListByOrg(ctx, orgID)
 	if err != nil {
 		return nil, err
@@ -123,7 +119,6 @@ func (o *Organization) UpdateMember(ctx context.Context, orgID, userID uuid.UUID
 	return nil, domain.ErrNotFound
 }
 
-// random one-time password
 func tempPassword() (string, error) {
 	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {

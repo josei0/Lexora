@@ -38,12 +38,10 @@ async function parseError(res: Response): Promise<ApiError> {
       message = body.error.message ?? message
     }
   } catch {
-    // non-json body
   }
   return new ApiError(res.status, code, message)
 }
 
-// login: sets refresh cookie, returns tokens
 export async function login(email: string, password: string): Promise<Tokens> {
   const res = await fetch(`${BASE}/auth/login`, {
     method: 'POST',
@@ -57,7 +55,6 @@ export async function login(email: string, password: string): Promise<Tokens> {
   return tok
 }
 
-// refresh: rotate cookie + new access token. throws on 401
 // dedup concurrent callers so token rotation isn't raced (strict-mode mount, parallel 401s)
 let inflight: Promise<Tokens> | null = null
 
@@ -88,7 +85,6 @@ export async function logout(): Promise<void> {
   }
 }
 
-// authed fetch: attach bearer, retry once after silent refresh on 401
 export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const isForm = init.body instanceof FormData
   const doFetch = () =>
@@ -104,7 +100,6 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
 
   let res = await doFetch()
   if (res.status === 401) {
-    // reactive silent refresh, then retry once
     await refresh()
     res = await doFetch()
   }

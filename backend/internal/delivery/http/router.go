@@ -10,7 +10,6 @@ import (
 	"github.com/lexora/backend/pkg/jwt"
 )
 
-// wire routes + middleware chain
 func NewRouter(api *handler.API, chats *handler.ChatAPI, billing *handler.BillingAPI, signer *jwt.Signer, corsOrigins []string) http.Handler {
 	strict := dto.NewStrictHandler(api, nil)
 	generated := dto.HandlerWithOptions(strict, dto.StdHTTPServerOptions{
@@ -24,7 +23,6 @@ func NewRouter(api *handler.API, chats *handler.ChatAPI, billing *handler.Billin
 	billing.Routes(mux)
 	mux.Handle("/", generated)
 
-	// outer chain: recover -> headers -> cors -> ratelimit -> bodylimit -> auth -> mux
 	var chain http.Handler = mux
 	chain = middleware.Auth(signer)(chain)
 	chain = middleware.BodyLimit(1<<20, usecase.MaxUploadBytes+(1<<20))(chain)

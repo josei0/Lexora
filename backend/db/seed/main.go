@@ -67,7 +67,9 @@ func upsertUser(ctx context.Context, pool *pgxpool.Pool, email, password, name, 
 	err = pool.QueryRow(ctx, `
 		insert into users (email, password_hash, full_name, system_role, is_active, must_change_password)
 		values ($1, $2, $3, $4, true, false)
-		on conflict (email) do update set password_hash = excluded.password_hash, full_name = excluded.full_name
+		on conflict (email) do update set
+			password_hash = excluded.password_hash, full_name = excluded.full_name,
+			system_role = excluded.system_role, is_active = true, must_change_password = false
 		returning id`, email, pw, name, role).Scan(&id)
 	if err != nil {
 		log.Fatalf("user %s: %v", email, err)

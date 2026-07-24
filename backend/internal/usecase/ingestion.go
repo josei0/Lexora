@@ -29,7 +29,6 @@ func NewIngestion(docs domain.DocumentRepository, st domain.Storage, ex domain.E
 	}
 }
 
-// start N workers
 func (i *Ingestion) Start(ctx context.Context, workers int) {
 	for w := 0; w < workers; w++ {
 		i.wg.Add(1)
@@ -106,7 +105,6 @@ func (i *Ingestion) run(ctx context.Context, doc *domain.Document) error {
 		return fmt.Errorf("no text extracted")
 	}
 
-	// embed in batches
 	texts := make([]string, len(chunks))
 	for j, c := range chunks {
 		texts[j] = c.Text
@@ -175,5 +173,4 @@ func (i *Ingestion) embedInBatches(ctx context.Context, texts []string) ([][]flo
 	return out, nil
 }
 
-// wait for workers to drain on shutdown
 func (i *Ingestion) Wait() { i.wg.Wait() }

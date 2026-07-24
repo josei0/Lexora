@@ -8,7 +8,6 @@ import (
 	"github.com/lexora/backend/internal/domain"
 )
 
-// jwt access token signer
 type Signer struct {
 	secret []byte
 	ttl    time.Duration
@@ -27,7 +26,6 @@ type claims struct {
 
 const issuer = "lexora"
 
-// sign access token
 func (s *Signer) Sign(id domain.Identity) (string, error) {
 	now := time.Now()
 	c := claims{
@@ -46,7 +44,6 @@ func (s *Signer) Sign(id domain.Identity) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString(s.secret)
 }
 
-// verify + parse identity
 func (s *Signer) Verify(token string) (domain.Identity, error) {
 	c := &claims{}
 	_, err := jwt.ParseWithClaims(token, c, func(t *jwt.Token) (any, error) {

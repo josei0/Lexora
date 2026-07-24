@@ -19,7 +19,6 @@ import {
 
 type Org = { id: string; name: string; slug: string }
 
-// action code → label bahasa
 const auditLabels: Record<string, string> = {
   'login.ok': 'Login berhasil',
   'login.fail': 'Login gagal',
@@ -41,7 +40,6 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [error, setError] = useState('')
 
-  // subscription form
   const [selOrg, setSelOrg] = useState('')
   const [selPlan, setSelPlan] = useState('')
   const [seats, setSeats] = useState(1)

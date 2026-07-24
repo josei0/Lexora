@@ -23,7 +23,6 @@ var allowedMIME = map[string]string{
 
 type enqueuer interface{ Enqueue(id uuid.UUID) }
 
-// document upload usecase
 type Document struct {
 	docs    domain.DocumentRepository
 	storage domain.Storage

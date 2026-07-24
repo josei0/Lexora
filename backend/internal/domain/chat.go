@@ -78,7 +78,6 @@ type LLMUsage struct {
 	OutputTokens int
 }
 
-// streaming chat completion
 type LLM interface {
 	Stream(ctx context.Context, system string, msgs []ChatMessage, onToken func(string)) (LLMUsage, error)
 	Model() string

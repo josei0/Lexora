@@ -19,7 +19,6 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 	})
 }
 
-// security headers
 func SecureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -31,7 +30,6 @@ func SecureHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// cors allowlist
 func CORS(allowed []string) func(http.Handler) http.Handler {
 	set := make(map[string]bool, len(allowed))
 	for _, o := range allowed {
@@ -57,7 +55,6 @@ func CORS(allowed []string) func(http.Handler) http.Handler {
 	}
 }
 
-// body size limit
 func BodyLimit(max, multipartMax int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +68,6 @@ func BodyLimit(max, multipartMax int64) func(http.Handler) http.Handler {
 	}
 }
 
-// panic recovery -> generic 500
 func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -84,7 +80,6 @@ func Recover(next http.Handler) http.Handler {
 	})
 }
 
-// per-key sliding-window limiter
 // ponytail: in-memory limiter, pindah Redis kalau multi-instance
 type limiter struct {
 	mu     sync.Mutex
@@ -116,7 +111,6 @@ func (l *limiter) allow(key string) bool {
 	return true
 }
 
-// rate limit login by ip (5/min)
 func RateLimitLogin(next http.Handler) http.Handler {
 	l := newLimiter(5, time.Minute)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

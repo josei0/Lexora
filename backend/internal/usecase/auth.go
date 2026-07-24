@@ -14,7 +14,6 @@ import (
 	"github.com/lexora/backend/pkg/jwt"
 )
 
-// auth usecase
 type Auth struct {
 	users      domain.UserRepository
 	members    domain.MembershipRepository
@@ -38,9 +37,7 @@ type Tokens struct {
 
 const accessTTLSeconds = 15 * 60
 
-// login: verify creds, issue tokens
 func (a *Auth) Login(ctx context.Context, email, password string) (*Tokens, error) {
-	// per-account rate limit
 	if !a.loginLimit.allow(email) {
 		return nil, domain.ErrRateLimited
 	}
@@ -59,7 +56,6 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*Tokens, erro
 	return a.issue(ctx, u)
 }
 
-// issue access + refresh
 func (a *Auth) issue(ctx context.Context, u *domain.User) (*Tokens, error) {
 	id := domain.Identity{UserID: u.ID, SystemRole: u.SystemRole}
 	if u.SystemRole != domain.SystemRoleSuperAdmin {
@@ -87,7 +83,6 @@ func (a *Auth) issue(ctx context.Context, u *domain.User) (*Tokens, error) {
 	return &Tokens{UserID: u.ID, Access: access, Refresh: raw, ExpiresIn: accessTTLSeconds, MustChangePassword: u.MustChangePassword}, nil
 }
 
-// refresh: rotate token
 func (a *Auth) Refresh(ctx context.Context, raw string) (*Tokens, error) {
 	rt, err := a.refresh.ByHash(ctx, hashToken(raw))
 	if err != nil {
@@ -103,14 +98,12 @@ func (a *Auth) Refresh(ctx context.Context, raw string) (*Tokens, error) {
 	if !u.IsActive {
 		return nil, domain.ErrInactive
 	}
-	// rotate: revoke old, issue new
 	if err := a.refresh.Revoke(ctx, rt.ID); err != nil {
 		return nil, err
 	}
 	return a.issue(ctx, u)
 }
 
-// logout: revoke refresh
 func (a *Auth) Logout(ctx context.Context, raw string) error {
 	if raw == "" {
 		return nil
@@ -118,7 +111,6 @@ func (a *Auth) Logout(ctx context.Context, raw string) error {
 	return a.refresh.RevokeByHash(ctx, hashToken(raw))
 }
 
-// change own password
 func (a *Auth) ChangePassword(ctx context.Context, userID uuid.UUID, current, next string) error {
 	u, err := a.users.ByID(ctx, userID)
 	if err != nil {
@@ -150,7 +142,6 @@ func hashToken(raw string) string {
 // bogus hash for constant-time login on missing user
 var dummyHash, _ = hash.Password("dummy-password-for-timing")
 
-// per-account sliding-window limiter
 // ponytail: in-memory, pindah Redis kalau multi-instance
 type acctLimiter struct {
 	mu     sync.Mutex

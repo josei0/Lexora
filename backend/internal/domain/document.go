@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// document status
 const (
 	DocStatusUploaded   = "uploaded"
 	DocStatusProcessing = "processing"
@@ -40,21 +39,18 @@ type DocumentChunk struct {
 	QdrantPointID string
 }
 
-// a chunk of text ready to embed + index
 type Chunk struct {
 	Index int
 	Text  string
 	Page  *int
 }
 
-// vector point to upsert into qdrant
 type VectorPoint struct {
 	ID      string
 	Vector  []float32
 	Payload map[string]any
 }
 
-// search hit from qdrant
 type SearchHit struct {
 	ID      string
 	Score   float32
@@ -74,19 +70,16 @@ type DocumentRepository interface {
 	DeleteChunks(ctx context.Context, documentID uuid.UUID) error
 }
 
-// text extraction from a stored file
 type Extractor interface {
 	// returns per-page text; page index is 1-based
 	Extract(path, mimeType string) ([]string, error)
 }
 
-// embedding provider (Maia Router)
 type Embedder interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
 	Dim() int
 }
 
-// vector store (Qdrant)
 type VectorRepository interface {
 	EnsureCollection(ctx context.Context, name string, dim int) error
 	Upsert(ctx context.Context, collection string, points []VectorPoint) error
@@ -94,7 +87,6 @@ type VectorRepository interface {
 	DeleteByDocument(ctx context.Context, collection, documentID string) error
 }
 
-// blob storage (local disk)
 type Storage interface {
 	Save(orgID, docID uuid.UUID, fileName string, data []byte) (string, error)
 	Read(path string) ([]byte, error)

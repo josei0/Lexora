@@ -56,7 +56,6 @@ func (r *Repo) do(ctx context.Context, method, path string, body any, out any) e
 
 // idempotent: PUT collection with vector size. already-exists = ok
 func (r *Repo) EnsureCollection(ctx context.Context, name string, dim int) error {
-	// check first
 	var probe struct {
 		Status string `json:"status"`
 	}
@@ -112,7 +111,6 @@ func (r *Repo) Search(ctx context.Context, collection string, vector []float32, 
 	return hits, nil
 }
 
-// delete all points of a document (filter on payload document_id)
 func (r *Repo) DeleteByDocument(ctx context.Context, collection, documentID string) error {
 	body := map[string]any{
 		"filter": map[string]any{

@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-// load .env if present
 func LoadDotenv(path string) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -26,7 +25,6 @@ func LoadDotenv(path string) {
 		}
 		k = strings.TrimSpace(k)
 		v = strings.TrimSpace(v)
-		// strip inline comment
 		if i := strings.Index(v, " #"); i >= 0 {
 			v = strings.TrimSpace(v[:i])
 		}

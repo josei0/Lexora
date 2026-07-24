@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// app config
 type Config struct {
 	Port        string
 	DatabaseURL string
@@ -36,7 +35,6 @@ type Config struct {
 	SuperAdminPassword string
 }
 
-// read env
 func Load() (*Config, error) {
 	c := &Config{
 		Port:               env("PORT", "8080"),

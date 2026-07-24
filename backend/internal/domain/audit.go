@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// action codes untuk audit log
 const (
 	AuditLoginOK        = "login.ok"
 	AuditLoginFail      = "login.fail"
@@ -34,6 +33,5 @@ type AuditLog struct {
 
 type AuditRepository interface {
 	Insert(ctx context.Context, e AuditLog) error
-	// terbaru dulu, dibatasi limit
 	Recent(ctx context.Context, limit int) ([]AuditLog, error)
 }

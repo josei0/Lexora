@@ -38,7 +38,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [scheduleRefresh])
 
-  // silent refresh on mount
   useEffect(() => {
     runRefresh()
     return () => {

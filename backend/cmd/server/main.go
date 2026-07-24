@@ -22,7 +22,6 @@ import (
 )
 
 func main() {
-	// load env
 	config.LoadDotenv(".env")
 	config.LoadDotenv("../.env")
 
@@ -34,7 +33,6 @@ func main() {
 	ctx, cancelRoot := context.WithCancel(context.Background())
 	defer cancelRoot()
 
-	// db pool
 	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("postgres: %v", err)
@@ -42,7 +40,6 @@ func main() {
 	defer pool.Close()
 	log.Println("postgres connected")
 
-	// wiring
 	signer := jwt.New(cfg.JWTSecret, cfg.JWTAccessTTL)
 	userRepo := postgres.NewUserRepo(pool)
 	orgRepo := postgres.NewOrgRepo(pool)
@@ -53,7 +50,6 @@ func main() {
 	authUC := usecase.NewAuth(userRepo, memberRepo, refreshRepo, signer, cfg.JWTRefreshTTL)
 	orgUC := usecase.NewOrganization(orgRepo, userRepo, memberRepo)
 
-	// ingestion pipeline
 	store := storage.NewLocal(cfg.StorageDir)
 	extractor := extract.New()
 	embedder := embedding.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.EmbeddingModel, cfg.EmbeddingDim)
@@ -68,7 +64,6 @@ func main() {
 	chatLLM := llm.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.ChatModel)
 	ragUC := usecase.NewRAG(chatRepo, embedder, vectors, chatLLM, cfg.RAGTopK, cfg.RAGMinScore)
 
-	// phase 4: billing, subscription, dashboard, prompts, export
 	planRepo := postgres.NewPlanRepo(pool)
 	subRepo := postgres.NewSubscriptionRepo(pool)
 	promptRepo := postgres.NewPromptRepo(pool)
@@ -93,7 +88,6 @@ func main() {
 	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, signer, cfg.CORSOrigins)
 	server := httpdelivery.NewServer(cfg.Port, router)
 
-	// run
 	go func() {
 		log.Printf("listening on :%s", cfg.Port)
 		if err := server.Start(); err != nil {
@@ -101,7 +95,6 @@ func main() {
 		}
 	}()
 
-	// graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop

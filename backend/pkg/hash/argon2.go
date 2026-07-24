@@ -11,7 +11,6 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// argon2id params
 const (
 	timeCost   = 1
 	memoryCost = 64 * 1024
@@ -22,7 +21,6 @@ const (
 
 var ErrMismatch = errors.New("password mismatch")
 
-// hash password
 func Password(plain string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
@@ -38,7 +36,6 @@ func Password(plain string) (string, error) {
 	), nil
 }
 
-// verify password
 func Verify(plain, encoded string) error {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 {

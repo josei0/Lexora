@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// domain errors
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrInvalidCreds  = errors.New("invalid credentials")
@@ -26,7 +25,6 @@ var (
 	ErrUnsupportedType = errors.New("unsupported file type")
 )
 
-// roles
 const (
 	SystemRoleSuperAdmin = "super_admin"
 	SystemRoleNone       = "none"
@@ -58,7 +56,6 @@ type Membership struct {
 	Role           string
 }
 
-// member view (join user + membership)
 type Member struct {
 	UserID   uuid.UUID
 	Email    string
@@ -75,7 +72,6 @@ type RefreshToken struct {
 	RevokedAt *time.Time
 }
 
-// identity from jwt
 type Identity struct {
 	UserID     uuid.UUID
 	OrgID      uuid.UUID // zero for super admin

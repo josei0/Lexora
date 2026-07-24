@@ -33,7 +33,6 @@ type Subscription struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// subscription joined with its plan
 type SubscriptionView struct {
 	Subscription
 	Plan Plan `json:"plan"`
@@ -62,7 +61,6 @@ type PromptRepository interface {
 	Set(ctx context.Context, key, content string, updatedBy uuid.UUID) error
 }
 
-// dashboard snapshot for one org
 type DashboardStats struct {
 	ChatsToday  int   `json:"chats_today"`
 	TokensMonth int64 `json:"tokens_month"`
@@ -73,14 +71,9 @@ type DashboardStats struct {
 	Seats       int   `json:"seats"`
 }
 
-// token usage aggregation
 type UsageRepository interface {
-	// sum tokens (input+output) for org in [from, to)
 	OrgTokens(ctx context.Context, orgID uuid.UUID, from, to time.Time) (int64, error)
-	// count members in org (for seat-scaled limit)
 	CountMembers(ctx context.Context, orgID uuid.UUID) (int, error)
-	// chats created since t (today, WIB)
 	ChatsSince(ctx context.Context, orgID uuid.UUID, t time.Time) (int, error)
-	// document counts: indexed, total
 	DocCounts(ctx context.Context, orgID uuid.UUID) (indexed, total int, err error)
 }
