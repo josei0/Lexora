@@ -117,19 +117,20 @@ func TestAskWithoutCitationMarkerSavesNone(t *testing.T) {
 	}
 }
 
-func TestAskNoRelevantChunkAnswersHonestly(t *testing.T) {
-	hits := []domain.SearchHit{hit("uu-a.pdf", 3, 0.2)}
-	rag, _, chat := setup(hits, "jawaban model yang seharusnya tidak dipakai")
+func TestAskNoRelevantChunkFallsBackToGeneralChat(t *testing.T) {
+	hits := []domain.SearchHit{hit("uu-a.pdf", 3, 0.2)} // di bawah threshold: tidak dipakai
+	rag, _, chat := setup(hits, "Halo, ada yang bisa dibantu?")
 
 	var streamed strings.Builder
-	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "resep kue?", func(tok string) {
+	msg, err := rag.Ask(context.Background(), chat.ID, chat.OrganizationID, chat.UserID, "halo", func(tok string) {
 		streamed.WriteString(tok)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != noContextAnswer || streamed.String() != noContextAnswer {
-		t.Fatalf("model dipanggil padahal skor di bawah threshold: %q", msg.Content)
+	// chunk skor rendah tidak jadi konteks, tapi model tetap menjawab (chat biasa)
+	if msg.Content != "Halo, ada yang bisa dibantu?" || streamed.String() != msg.Content {
+		t.Fatalf("mode chat biasa tidak jalan: %q", msg.Content)
 	}
 	if len(msg.Citations) != 0 {
 		t.Fatalf("citation muncul tanpa chunk relevan: %+v", msg.Citations)

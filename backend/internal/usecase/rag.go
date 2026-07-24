@@ -20,7 +20,16 @@ Aturan:
 - Ringkas, terstruktur, dan pakai istilah hukum yang tepat.
 - Tulis teks biasa tanpa markdown (jangan pakai **, ##, atau bullet -). Untuk daftar, pakai penomoran "1." di baris terpisah.`
 
-const noContextAnswer = "Maaf, pustaka pengetahuan organisasi Anda belum memuat informasi yang relevan dengan pertanyaan ini. Silakan unggah dokumen terkait lebih dulu, atau perjelas pertanyaannya."
+// dipakai saat tidak ada dokumen relevan: chat biasa, tetap larang mengarang pasal
+const generalPrompt = `Kamu adalah Lexora, asisten hukum untuk praktisi hukum Indonesia.
+
+Balas dengan natural dan membantu, seperti asisten percakapan biasa.
+Aturan:
+- Untuk sapaan atau obrolan umum, jawab wajar dan ramah.
+- Untuk pertanyaan hukum umum, jelaskan sebaik pengetahuanmu.
+- JANGAN mengarang nomor pasal, nomor peraturan, tahun, atau kutipan spesifik. Kalau tidak yakin atau tidak ada dokumen rujukan di pustaka, katakan terus terang dan sarankan pengguna mengunggah dokumen terkait agar jawaban bisa dirujuk dengan tepat.
+- Jawab dengan bahasa yang dipakai penanya (default Bahasa Indonesia).
+- Tulis teks biasa tanpa markdown (jangan pakai **, ##, atau bullet -). Untuk daftar, pakai penomoran "1." di baris terpisah.`
 
 type RAG struct {
 	chats     domain.ChatRepository
@@ -132,16 +141,18 @@ func (r *RAG) Ask(ctx context.Context, chatID, orgID, userID uuid.UUID, question
 		return nil, err
 	}
 
+	msgs := buildTurns(history, r.maxTurns)
+	system := r.systemPrompt(ctx)
 	if len(hits) == 0 {
-		onToken(noContextAnswer)
-		return r.saveAnswer(ctx, chat, orgID, userID, noContextAnswer, nil, domain.LLMUsage{})
+		// tanpa dokumen relevan: chat biasa, tanpa RAG
+		system = generalPrompt
+		msgs = append(msgs, domain.ChatMessage{Role: domain.RoleUser, Content: question})
+	} else {
+		msgs = append(msgs, domain.ChatMessage{Role: domain.RoleUser, Content: buildPrompt(hits, question)})
 	}
 
-	msgs := buildTurns(history, r.maxTurns)
-	msgs = append(msgs, domain.ChatMessage{Role: domain.RoleUser, Content: buildPrompt(hits, question)})
-
 	var sb strings.Builder
-	usage, err := r.llm.Stream(ctx, r.systemPrompt(ctx), msgs, func(tok string) {
+	usage, err := r.llm.Stream(ctx, system, msgs, func(tok string) {
 		sb.WriteString(tok)
 		onToken(tok)
 	})
