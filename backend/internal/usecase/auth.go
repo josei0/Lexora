@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,20 +15,22 @@ import (
 	"github.com/lexora/backend/internal/domain"
 	"github.com/lexora/backend/pkg/hash"
 	"github.com/lexora/backend/pkg/jwt"
+	"github.com/pquerna/otp/totp"
 )
 
 type Auth struct {
 	users       domain.UserRepository
 	members     domain.MembershipRepository
 	refresh     domain.RefreshTokenRepository
+	recovery    domain.RecoveryCodeRepository
 	signer      *jwt.Signer // token app (aud=app)
 	adminSigner *jwt.Signer // token admin (aud=admin, kunci terpisah)
 	refreshTTL  time.Duration
 	loginLimit  *acctLimiter
 }
 
-func NewAuth(u domain.UserRepository, m domain.MembershipRepository, r domain.RefreshTokenRepository, s, admin *jwt.Signer, refreshTTL time.Duration) *Auth {
-	return &Auth{u, m, r, s, admin, refreshTTL, newAcctLimiter(10, time.Minute)}
+func NewAuth(u domain.UserRepository, m domain.MembershipRepository, r domain.RefreshTokenRepository, rec domain.RecoveryCodeRepository, s, admin *jwt.Signer, refreshTTL time.Duration) *Auth {
+	return &Auth{u, m, r, rec, s, admin, refreshTTL, newAcctLimiter(10, time.Minute)}
 }
 
 type Tokens struct {
@@ -61,8 +66,19 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*Tokens, erro
 	return a.issue(ctx, u, a.signer, uuid.Nil)
 }
 
-// login panel admin, super_admin only
-func (a *Auth) AdminLogin(ctx context.Context, email, password string) (*Tokens, error) {
+// hasil langkah login admin; Tokens terisi hanya saat 2FA lolos
+type AdminStep struct {
+	Tokens         *Tokens
+	EnrollRequired bool
+	MFARequired    bool
+	OTPAuthURL     string   // saat enroll: bahan QR
+	RecoveryCodes  []string // sekali tampil, setelah enroll sukses
+}
+
+const totpIssuer = "Lexora Admin"
+
+// kredensial dasar admin, dipakai ketiga langkah (stateless: password ikut tiap call)
+func (a *Auth) adminUser(ctx context.Context, email, password string) (*domain.User, error) {
 	u, err := a.users.ByEmail(ctx, email)
 	if err != nil {
 		_ = hash.Verify(password, dummyHash)
@@ -78,8 +94,152 @@ func (a *Auth) AdminLogin(ctx context.Context, email, password string) (*Tokens,
 	if u.SystemRole != domain.SystemRoleSuperAdmin {
 		return nil, domain.ErrInvalidCreds
 	}
-	// ponytail: TOTP nyusul C3
+	return u, nil
+}
+
+// langkah 1: password. Tidak pernah menerbitkan token (2FA wajib - update2 keputusan #5)
+func (a *Auth) AdminLogin(ctx context.Context, email, password string) (*AdminStep, error) {
+	u, err := a.adminUser(ctx, email, password)
+	if err != nil {
+		return nil, err
+	}
+	if u.TOTPConfirmedAt == nil {
+		return a.beginEnroll(ctx, u)
+	}
+	return &AdminStep{MFARequired: true}, nil
+}
+
+// enrollment paksa: secret dipertahankan antar-percobaan biar QR stabil
+func (a *Auth) beginEnroll(ctx context.Context, u *domain.User) (*AdminStep, error) {
+	if u.TOTPSecret != nil {
+		return &AdminStep{EnrollRequired: true, OTPAuthURL: otpauthURL(u.Email, *u.TOTPSecret)}, nil
+	}
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: totpIssuer, AccountName: u.Email})
+	if err != nil {
+		return nil, err
+	}
+	if err := a.users.SetTOTPSecret(ctx, u.ID, key.Secret()); err != nil {
+		return nil, err
+	}
+	return &AdminStep{EnrollRequired: true, OTPAuthURL: key.URL()}, nil
+}
+
+// konfirmasi enrollment: kode valid -> confirmed + recovery codes + token penuh
+func (a *Auth) AdminEnroll(ctx context.Context, email, password, code string) (*AdminStep, error) {
+	u, err := a.adminUser(ctx, email, password)
+	if err != nil {
+		return nil, err
+	}
+	if u.TOTPConfirmedAt != nil || u.TOTPSecret == nil {
+		return nil, domain.ErrInvalidCreds
+	}
+	step, ok := validTOTP(*u.TOTPSecret, code, u.TOTPLastStep)
+	if !ok {
+		return nil, domain.ErrInvalidCreds
+	}
+	if err := a.users.SetTOTPLastStep(ctx, u.ID, step); err != nil {
+		return nil, err
+	}
+	if err := a.users.ConfirmTOTP(ctx, u.ID); err != nil {
+		return nil, err
+	}
+	codes, hashes, err := genRecoveryCodes()
+	if err != nil {
+		return nil, err
+	}
+	if err := a.recovery.Replace(ctx, u.ID, hashes); err != nil {
+		return nil, err
+	}
+	tok, err := a.issue(ctx, u, a.adminSigner, uuid.Nil)
+	if err != nil {
+		return nil, err
+	}
+	return &AdminStep{Tokens: tok, RecoveryCodes: codes}, nil
+}
+
+// langkah 2: kode TOTP (6 digit) atau recovery code -> token penuh
+func (a *Auth) AdminVerify(ctx context.Context, email, password, code string) (*Tokens, error) {
+	u, err := a.adminUser(ctx, email, password)
+	if err != nil {
+		return nil, err
+	}
+	if u.TOTPConfirmedAt == nil || u.TOTPSecret == nil {
+		return nil, domain.ErrInvalidCreds
+	}
+	code = strings.TrimSpace(code)
+	if len(code) == 6 {
+		step, ok := validTOTP(*u.TOTPSecret, code, u.TOTPLastStep)
+		if !ok {
+			return nil, domain.ErrInvalidCreds
+		}
+		if err := a.users.SetTOTPLastStep(ctx, u.ID, step); err != nil {
+			return nil, err
+		}
+	} else if !a.useRecoveryCode(ctx, u.ID, code) {
+		return nil, domain.ErrInvalidCreds
+	}
 	return a.issue(ctx, u, a.adminSigner, uuid.Nil)
+}
+
+func (a *Auth) useRecoveryCode(ctx context.Context, userID uuid.UUID, code string) bool {
+	codes, err := a.recovery.Unused(ctx, userID)
+	if err != nil {
+		return false
+	}
+	for _, c := range codes {
+		if hash.Verify(code, c.CodeHash) == nil {
+			return a.recovery.MarkUsed(ctx, c.ID) == nil
+		}
+	}
+	return false
+}
+
+// tiap step 30 detik hanya sah sekali (anti-replay T19); toleransi jam ±1 step; banding constant-time
+func validTOTP(secret, code string, lastStep int64) (int64, bool) {
+	now := time.Now().Unix() / 30
+	for _, step := range []int64{now, now - 1, now + 1} {
+		if step <= lastStep {
+			continue
+		}
+		want, err := totp.GenerateCode(secret, time.Unix(step*30, 0))
+		if err != nil {
+			return 0, false
+		}
+		if subtle.ConstantTimeCompare([]byte(want), []byte(code)) == 1 {
+			return step, true
+		}
+	}
+	return 0, false
+}
+
+// 8 kode format XXXXX-XXXXX, hash argon2id (pkg/hash yang sama dengan password)
+func genRecoveryCodes() (codes, hashes []string, err error) {
+	for range 8 {
+		b := make([]byte, 5)
+		if _, err := rand.Read(b); err != nil {
+			return nil, nil, err
+		}
+		c := strings.ToUpper(hex.EncodeToString(b))
+		c = c[:5] + "-" + c[5:]
+		h, err := hash.Password(c)
+		if err != nil {
+			return nil, nil, err
+		}
+		codes = append(codes, c)
+		hashes = append(hashes, h)
+	}
+	return codes, hashes, nil
+}
+
+// rekonstruksi URL provisioning untuk secret yang sudah tersimpan
+func otpauthURL(email, secret string) string {
+	q := url.Values{}
+	q.Set("secret", secret)
+	q.Set("issuer", totpIssuer)
+	q.Set("algorithm", "SHA1")
+	q.Set("digits", "6")
+	q.Set("period", "30")
+	return "otpauth://totp/" + url.PathEscape(totpIssuer+":"+email) + "?" + q.Encode()
 }
 
 // nil = sesi baru

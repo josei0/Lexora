@@ -41,6 +41,33 @@ type Citation struct {
 	Marker          int
 	PageNo          *int
 	Score           float32
+	SourceURL       *string // terisi = sumber web, bukan dokumen pustaka
+}
+
+// satu baris log pencarian web: kuota harian + sumber data kandidat pustaka
+type WebSearch struct {
+	OrganizationID uuid.UUID
+	UserID         uuid.UUID
+	Query          string
+	Provider       string
+	ResultsCount   int
+	TopURLs        []string
+}
+
+// URL populer dari pencarian user yang belum ada di pustaka - kandidat fase 9
+type WebCandidate struct {
+	URL    string
+	Hits   int
+	LastAt time.Time
+}
+
+type WebSearchRepository interface {
+	Log(ctx context.Context, s WebSearch) error
+	// jumlah pencarian user hari ini (window WIB) - gate kuota harian
+	CountToday(ctx context.Context, orgID, userID uuid.UUID, from time.Time) (int, error)
+	DeleteOlderThan(ctx context.Context, t time.Time) (int64, error)
+	// URL >= minHits dalam window since, belum ada di documents.source_url org ini
+	Candidates(ctx context.Context, orgID uuid.UUID, minHits int, since time.Time) ([]WebCandidate, error)
 }
 
 type TokenUsage struct {
@@ -63,6 +90,8 @@ type ChatRepository interface {
 	Touch(ctx context.Context, id uuid.UUID) error
 
 	AddMessage(ctx context.Context, m *Message) error
+	// jumlah pertanyaan user hari ini (window WIB) - cap harian plan gratis
+	CountUserMessagesSince(ctx context.Context, orgID, userID uuid.UUID, since time.Time) (int, error)
 	Messages(ctx context.Context, chatID uuid.UUID) ([]Message, error)
 	AddCitations(ctx context.Context, cs []Citation) error
 	AddUsage(ctx context.Context, u TokenUsage) error

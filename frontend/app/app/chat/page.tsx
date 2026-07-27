@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, Trash2, Download, Paperclip, X } from 'lucide-react'
+import { Plus, Trash2, Download, Globe, Paperclip, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,10 @@ export default function ChatPage() {
   const [citations, setCitations] = useState<Citation[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [quotaNotice, setQuotaNotice] = useState('')
+  const [quotaLow, setQuotaLow] = useState(false)
+  const [webSearch, setWebSearch] = useState(false)
+  const [status, setStatus] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -110,16 +114,32 @@ export default function ChatPage() {
           answer += tok
           setStreaming(answer)
         },
-        onDone: (cits, messageId) => {
+        onStatus: (s) => setStatus(s === 'searching' ? 'Mencari di web…' : ''),
+        onDone: (cits, messageId, quota, web) => {
           setMessages((prev) => [
             ...prev,
             { id: messageId, role: 'assistant', content: answer, created_at: '', citations: cits },
           ])
           setStreaming('')
+          setStatus('')
           setCitations(cits)
+          setQuotaNotice(
+            web?.skipped === 'quota'
+              ? 'Jatah pencarian web hari ini habis. Jawaban disusun dari pustaka.'
+              : web?.skipped === 'failed'
+                ? 'Pencarian web gagal. Jawaban disusun dari pustaka.'
+                : web?.skipped === 'plan'
+                  ? 'Pencarian web tidak tersedia di paket ini.'
+                  : quota?.degraded
+                    ? 'Jatah AI High bulan ini habis. Jawaban berikutnya memakai AI Normal.'
+                    : quota?.soft
+                      ? 'Pemakaian bulan ini sudah di atas 80%.'
+                      : '',
+          )
+          setQuotaLow(!!(quota?.degraded || quota?.soft))
         },
         onError: (msg) => setError(msg),
-      })
+      }, webSearch)
       await loadChats()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'gagal mengirim pertanyaan')
@@ -197,6 +217,20 @@ export default function ChatPage() {
         </div>
 
         {error && <p className="py-2 text-sm text-destructive">{error}</p>}
+        {status && <p className="py-2 text-xs text-muted-foreground">{status}</p>}
+        {quotaNotice && (
+          <p className="py-2 text-xs text-accent-foreground">
+            {quotaNotice}
+            {quotaLow && (
+              <>
+                {' '}
+                <a href="/app/billing" className="underline">
+                  Top-up kuota
+                </a>
+              </>
+            )}
+          </p>
+        )}
 
         {files.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -238,6 +272,23 @@ export default function ChatPage() {
           >
             <Paperclip className="size-4" />
           </Button>
+          <Button
+            type="button"
+            variant={webSearch ? 'default' : 'outline'}
+            size="icon"
+            // lampiran menang: toggle mati saat ada file (backend juga mengabaikannya)
+            disabled={busy || files.length > 0}
+            onClick={() => setWebSearch((v) => !v)}
+            aria-pressed={webSearch}
+            title={
+              files.length > 0
+                ? 'Tidak tersedia saat ada lampiran'
+                : 'Cari di web. Pertanyaan Anda dikirim ke layanan pencarian.'
+            }
+            aria-label="Cari di web"
+          >
+            <Globe className="size-4" />
+          </Button>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -263,13 +314,23 @@ function MessageBubble({ message }: { message: Message }) {
           <div className="mt-3 flex flex-col gap-1.5">
             <p className="text-xs font-medium text-muted-foreground">Sumber</p>
             {message.citations.map((c, i) => (
-              <Card key={`${c.document_id}-${i}`}>
-                <CardContent className="flex items-center justify-between px-3 py-2">
+              <Card key={`${c.document_id ?? c.url}-${i}`}>
+                <CardContent className="flex items-center justify-between gap-2 px-3 py-2">
                   <span className="truncate text-xs">
-                    [{c.marker}] {c.label}
+                    [{c.marker}]{' '}
+                    {c.url ? (
+                      <a href={c.url} target="_blank" rel="noopener noreferrer" className="underline">
+                        {c.label}
+                      </a>
+                    ) : (
+                      c.label
+                    )}
                     {c.page_no ? ` · hal. ${c.page_no}` : ''}
                   </span>
-                  <span className="text-xs text-muted-foreground">{(c.score * 100).toFixed(0)}%</span>
+                  {/* sumber web ditandai domain, biar user tahu ini bukan pustaka terkurasi */}
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {c.url ? new URL(c.url).hostname : `${(c.score * 100).toFixed(0)}%`}
+                  </span>
                 </CardContent>
               </Card>
             ))}

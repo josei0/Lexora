@@ -17,7 +17,7 @@ func NewPlanRepo(db *pgxpool.Pool) *PlanRepo { return &PlanRepo{db} }
 
 func (r *PlanRepo) List(ctx context.Context) ([]domain.Plan, error) {
 	rows, err := r.db.Query(ctx, `
-		select id, code, name, model, price_idr, monthly_token_limit, is_active
+		select id, code, name, model, price_idr, monthly_token_limit, is_active, web_search_enabled, daily_web_searches, daily_messages
 		from plans where is_active = true order by price_idr`)
 	if err != nil {
 		return nil, err
@@ -36,26 +36,29 @@ func (r *PlanRepo) List(ctx context.Context) ([]domain.Plan, error) {
 
 func (r *PlanRepo) ByCode(ctx context.Context, code string) (*domain.Plan, error) {
 	return scanPlan(r.db.QueryRow(ctx, `
-		select id, code, name, model, price_idr, monthly_token_limit, is_active
+		select id, code, name, model, price_idr, monthly_token_limit, is_active, web_search_enabled, daily_web_searches, daily_messages
 		from plans where code = $1`, code))
 }
 
 // idempotent seed upsert
 func (r *PlanRepo) Upsert(ctx context.Context, p *domain.Plan) error {
 	return r.db.QueryRow(ctx, `
-		insert into plans (code, name, model, price_idr, monthly_token_limit, is_active)
-		values ($1, $2, $3, $4, $5, $6)
+		insert into plans (code, name, model, price_idr, monthly_token_limit, is_active, web_search_enabled, daily_web_searches, daily_messages)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		on conflict (code) do update set
 			name = excluded.name, model = excluded.model, price_idr = excluded.price_idr,
+			web_search_enabled = excluded.web_search_enabled, daily_web_searches = excluded.daily_web_searches,
+			daily_messages = excluded.daily_messages,
 			monthly_token_limit = excluded.monthly_token_limit, is_active = excluded.is_active,
 			updated_at = now()
 		returning id`,
-		p.Code, p.Name, p.Model, p.PriceIDR, p.MonthlyTokenLimit, p.IsActive).Scan(&p.ID)
+		p.Code, p.Name, p.Model, p.PriceIDR, p.MonthlyTokenLimit, p.IsActive,
+		p.WebSearchEnabled, p.DailyWebSearches, p.DailyMessages).Scan(&p.ID)
 }
 
 func scanPlan(row pgx.Row) (*domain.Plan, error) {
 	var p domain.Plan
-	err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Model, &p.PriceIDR, &p.MonthlyTokenLimit, &p.IsActive)
+	err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Model, &p.PriceIDR, &p.MonthlyTokenLimit, &p.IsActive, &p.WebSearchEnabled, &p.DailyWebSearches, &p.DailyMessages)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -72,12 +75,12 @@ func NewSubscriptionRepo(db *pgxpool.Pool) *SubscriptionRepo { return &Subscript
 func (r *SubscriptionRepo) ByOrg(ctx context.Context, orgID uuid.UUID) (*domain.SubscriptionView, error) {
 	var v domain.SubscriptionView
 	err := r.db.QueryRow(ctx, `
-		select s.id, s.organization_id, s.plan_id, s.seats, s.created_at, s.updated_at,
-		       p.id, p.code, p.name, p.model, p.price_idr, p.monthly_token_limit, p.is_active
+		select s.id, s.organization_id, s.plan_id, s.seats, s.current_period_end, s.created_at, s.updated_at,
+		       p.id, p.code, p.name, p.model, p.price_idr, p.monthly_token_limit, p.is_active, p.web_search_enabled, p.daily_web_searches, p.daily_messages
 		from subscriptions s join plans p on p.id = s.plan_id
 		where s.organization_id = $1`, orgID).Scan(
-		&v.ID, &v.OrganizationID, &v.PlanID, &v.Seats, &v.CreatedAt, &v.UpdatedAt,
-		&v.Plan.ID, &v.Plan.Code, &v.Plan.Name, &v.Plan.Model, &v.Plan.PriceIDR, &v.Plan.MonthlyTokenLimit, &v.Plan.IsActive)
+		&v.ID, &v.OrganizationID, &v.PlanID, &v.Seats, &v.CurrentPeriodEnd, &v.CreatedAt, &v.UpdatedAt,
+		&v.Plan.ID, &v.Plan.Code, &v.Plan.Name, &v.Plan.Model, &v.Plan.PriceIDR, &v.Plan.MonthlyTokenLimit, &v.Plan.IsActive, &v.Plan.WebSearchEnabled, &v.Plan.DailyWebSearches, &v.Plan.DailyMessages)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -89,12 +92,13 @@ func (r *SubscriptionRepo) ByOrg(ctx context.Context, orgID uuid.UUID) (*domain.
 
 func (r *SubscriptionRepo) Upsert(ctx context.Context, s *domain.Subscription) error {
 	return r.db.QueryRow(ctx, `
-		insert into subscriptions (organization_id, plan_id, seats)
-		values ($1, $2, $3)
+		insert into subscriptions (organization_id, plan_id, seats, current_period_end)
+		values ($1, $2, $3, $4)
 		on conflict (organization_id) do update set
-			plan_id = excluded.plan_id, seats = excluded.seats, updated_at = now()
+			plan_id = excluded.plan_id, seats = excluded.seats,
+			current_period_end = excluded.current_period_end, updated_at = now()
 		returning id, created_at, updated_at`,
-		s.OrganizationID, s.PlanID, s.Seats).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
+		s.OrganizationID, s.PlanID, s.Seats, s.CurrentPeriodEnd).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
 }
 
 type PromptRepo struct{ db *pgxpool.Pool }

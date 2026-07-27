@@ -113,12 +113,17 @@ func subscribe(ctx context.Context, pool *pgxpool.Pool, orgID uuid.UUID, planCod
 	}
 }
 
-// seed plans (idempotent). Semua tier -> Sonnet: Maia baru serve Sonnet, Opus/Haiku 404.
+// seed plans (idempotent). Model = tier: Demo Normal (Haiku), Pro High (Sonnet).
+// Nilai harus sama persis dgn CHAT_MODEL_NORMAL/HIGH - itu yang dibandingkan RAG.gate.
 func seedPlans(ctx context.Context, pool *pgxpool.Pool) {
 	repo := postgres.NewPlanRepo(pool)
 	plans := []domain.Plan{
-		{Code: domain.PlanDemo, Name: "Demo", Model: "maia/claude-sonnet-4-5", PriceIDR: 0, MonthlyTokenLimit: 200_000, IsActive: true},
-		{Code: domain.PlanPro, Name: "Pro", Model: "maia/claude-sonnet-4-5", PriceIDR: 275_000, MonthlyTokenLimit: 2_000_000, IsActive: true},
+		{Code: domain.PlanDemo, Name: "Demo", Model: "anthropic/claude-haiku-4-5", PriceIDR: 0,
+			MonthlyTokenLimit: 200_000, IsActive: true,
+			WebSearchEnabled: false, DailyWebSearches: 0, DailyMessages: 10},
+		{Code: domain.PlanPro, Name: "Pro", Model: "maia/claude-sonnet-4-5", PriceIDR: 275_000,
+			MonthlyTokenLimit: 2_000_000, IsActive: true,
+			WebSearchEnabled: true, DailyWebSearches: 10, DailyMessages: 0},
 	}
 	for i := range plans {
 		if err := repo.Upsert(ctx, &plans[i]); err != nil {

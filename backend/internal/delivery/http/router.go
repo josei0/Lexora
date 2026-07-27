@@ -10,7 +10,7 @@ import (
 	"github.com/lexora/backend/pkg/jwt"
 )
 
-func NewRouter(api *handler.API, chats *handler.ChatAPI, billing *handler.BillingAPI, signer, adminSigner *jwt.Signer, corsApp, corsAdmin []string) http.Handler {
+func NewRouter(api *handler.API, chats *handler.ChatAPI, billing *handler.BillingAPI, web *handler.WebAPI, invoices *handler.InvoiceAPI, signer, adminSigner *jwt.Signer, corsApp, corsAdmin []string) http.Handler {
 	strict := dto.NewStrictHandler(api, nil)
 	generated := dto.HandlerWithOptions(strict, dto.StdHTTPServerOptions{
 		BaseURL:     "",
@@ -21,6 +21,8 @@ func NewRouter(api *handler.API, chats *handler.ChatAPI, billing *handler.Billin
 	mux := http.NewServeMux()
 	chats.Routes(mux)
 	billing.Routes(mux)
+	web.Routes(mux)
+	invoices.Routes(mux)
 	api.AdminAuthRoutes(mux)
 	mux.Handle("/", generated)
 

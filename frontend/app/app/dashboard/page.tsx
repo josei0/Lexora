@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ApiError, getDashboard, getQuota, type DashboardStats, type Quota } from '@/lib/api'
+import { ApiError, getDashboard, getQuota, tierLabel, type DashboardStats, type Quota } from '@/lib/api'
 
 function fmt(n: number) {
   return n.toLocaleString('id-ID')
@@ -36,7 +36,8 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="mb-6 font-serif text-3xl">Dashboard</h1>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard title="Kualitas AI" value={tierLabel(quota?.tier)} />
         <StatCard title="Chat hari ini" value={fmt(stats.chats_today)} />
         <StatCard title="Dokumen terindeks" value={`${fmt(stats.docs_indexed)} / ${fmt(stats.docs_total)}`} />
         <StatCard title="Anggota" value={`${fmt(stats.members)}${stats.seats > 0 ? ` / ${fmt(stats.seats)} seat` : ''}`} />
@@ -44,14 +45,12 @@ export default function DashboardPage() {
 
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle className="text-base">Token bulan ini</CardTitle>
+          <CardTitle className="text-base">Pemakaian bulan ini</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-2 flex justify-between text-sm">
-            <span>{fmt(used)} token terpakai</span>
-            <span className="text-muted-foreground">
-              {limit > 0 ? `${fmt(limit)} limit · ${p}%` : 'Tanpa batas'}
-            </span>
+            <span>{limit > 0 ? `${p}% terpakai` : 'Tanpa batas'}</span>
+            <span className="text-muted-foreground">{fmt(used)} token</span>
           </div>
           {limit > 0 && (
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -62,10 +61,17 @@ export default function DashboardPage() {
             </div>
           )}
           {quota?.soft && !quota.hard && (
-            <p className="mt-2 text-xs text-accent-foreground">Penggunaan mendekati batas (≥80%).</p>
+            <p className="mt-2 text-xs text-accent-foreground">Pemakaian mendekati batas (≥80%).</p>
           )}
-          {quota?.hard && (
-            <p className="mt-2 text-xs text-destructive">Kuota habis. Hubungi admin untuk menambah limit.</p>
+          {quota?.hard && quota.tier === 'high' && (
+            <p className="mt-2 text-xs text-accent-foreground">
+              Jatah AI High bulan ini habis. Percakapan tetap jalan memakai AI Normal.
+            </p>
+          )}
+          {quota?.hard && quota.tier === 'normal' && (
+            <p className="mt-2 text-xs text-destructive">
+              Jatah bulan ini habis. Hubungi admin untuk menaikkan paket.
+            </p>
           )}
         </CardContent>
       </Card>

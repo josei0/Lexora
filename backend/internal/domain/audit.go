@@ -12,13 +12,17 @@ const (
 	AuditLoginFail      = "login.fail"
 	AuditAdminLoginOK   = "admin.login.ok"
 	AuditAdminLoginFail = "admin.login.fail"
+	AuditAdminMFAEnroll = "admin.mfa_enroll"
 	AuditLogout         = "logout"
 	AuditPasswordChange = "password.change"
 	AuditOrgCreate      = "org.create"
 	AuditMemberAdd      = "member.add"
 	AuditMemberUpdate   = "member.update"
 	AuditDocUpload      = "document.upload"
+	AuditKBWebIngest    = "kb.web_ingest"
 	AuditSubAssign      = "subscription.assign"
+	AuditInvoicePaid    = "billing.invoice_paid"
+	AuditManualPaid     = "billing.manual_paid"
 	AuditPromptUpdate   = "prompt.update"
 )
 

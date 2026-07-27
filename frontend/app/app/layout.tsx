@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 
 import { AuthProvider, useAuth } from '@/lib/auth-context'
 import { AppSidebar } from '@/components/app/sidebar'
+import { SubscriptionBanner } from '@/components/app/subscription-banner'
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { status } = useAuth()
@@ -24,7 +25,10 @@ function Guard({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background">
       <AppSidebar />
-      <main className="flex-1 p-8">{children}</main>
+      <div className="flex flex-1 flex-col">
+        <SubscriptionBanner />
+        <main className="flex-1 p-8">{children}</main>
+      </div>
     </div>
   )
 }

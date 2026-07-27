@@ -16,10 +16,28 @@ func NewDocumentRepo(db *pgxpool.Pool) *DocumentRepo { return &DocumentRepo{db} 
 
 func (r *DocumentRepo) Create(ctx context.Context, d *domain.Document) error {
 	return r.db.QueryRow(ctx, `
-		insert into documents (organization_id, uploaded_by, scope, file_name, mime_type, file_size, storage_path, status)
-		values ($1,$2,$3,$4,$5,$6,$7,$8) returning id, created_at`,
-		d.OrganizationID, d.UploadedBy, d.Scope, d.FileName, d.MimeType, d.FileSize, d.StoragePath, d.Status,
+		insert into documents (organization_id, uploaded_by, scope, file_name, mime_type, file_size, storage_path, status, source_url)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id, created_at`,
+		d.OrganizationID, d.UploadedBy, d.Scope, d.FileName, d.MimeType, d.FileSize, d.StoragePath, d.Status, d.SourceURL,
 	).Scan(&d.ID, &d.CreatedAt)
+}
+
+// anti-duplikat ingest web, scoped org
+func (r *DocumentRepo) BySourceURL(ctx context.Context, orgID uuid.UUID, url string) (*domain.Document, error) {
+	var d domain.Document
+	err := r.db.QueryRow(ctx, `
+		select id, organization_id, uploaded_by, scope, file_name, mime_type, file_size, storage_path, status, error, source_url, created_at
+		from documents where organization_id = $1 and source_url = $2
+		limit 1`, orgID, url).Scan(
+		&d.ID, &d.OrganizationID, &d.UploadedBy, &d.Scope, &d.FileName, &d.MimeType,
+		&d.FileSize, &d.StoragePath, &d.Status, &d.Error, &d.SourceURL, &d.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 
 // scoped by org - anti-IDOR

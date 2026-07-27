@@ -36,6 +36,9 @@ func (f *fakeDocs) InsertChunks(_ context.Context, c []domain.DocumentChunk) err
 	f.chunks = append(f.chunks, c...)
 	return nil
 }
+func (f *fakeDocs) BySourceURL(context.Context, uuid.UUID, string) (*domain.Document, error) {
+	return nil, domain.ErrNotFound
+}
 func (f *fakeDocs) DeleteChunks(_ context.Context, _ uuid.UUID) error {
 	f.deletes++
 	f.chunks = nil

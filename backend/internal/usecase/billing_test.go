@@ -40,12 +40,77 @@ func subView(limitPerSeat int64, seats int) *domain.SubscriptionView {
 	}
 }
 
-func TestBillingHardBlocksAtLimit(t *testing.T) {
-	// limit 1000/seat * 2 seats = 2000; sudah pakai 2000 -> hard
+// subscription dgn masa aktif berakhir `daysAgo` hari lalu
+func expiredSub(daysAgo int) *domain.SubscriptionView {
+	end := time.Now().AddDate(0, 0, -daysAgo)
+	v := subView(1000, 1)
+	v.CurrentPeriodEnd = &end
+	return v
+}
+
+// U4: lewat periode tapi masih grace -> tetap bisa dipakai, ditandai past_due
+func TestSubPastDueStillWorks(t *testing.T) {
+	b := NewBilling(&fakeSubs{sub: expiredSub(3)}, &fakeUsage{tokens: 10})
+	q, err := b.Check(context.Background(), uuid.New(), time.Now())
+	if err != nil {
+		t.Fatalf("dalam grace tidak boleh diblok: %v", err)
+	}
+	if q.Status != domain.SubPastDue {
+		t.Fatalf("mau past_due, dapat %q", q.Status)
+	}
+}
+
+// U5: lewat grace -> expired, fitur menulis ditolak
+func TestSubExpiredBlocksAfterGrace(t *testing.T) {
+	b := NewBilling(&fakeSubs{sub: expiredSub(domain.GraceDays + 1)}, &fakeUsage{tokens: 10})
+	if _, err := b.Check(context.Background(), uuid.New(), time.Now()); err != domain.ErrSubExpired {
+		t.Fatalf("lewat grace harus ErrSubExpired, dapat %v", err)
+	}
+	if err := b.GateAccess(context.Background(), uuid.New(), time.Now()); err != domain.ErrSubExpired {
+		t.Fatalf("GateAccess harus tolak expired, dapat %v", err)
+	}
+}
+
+// U10: subscription lama (period NULL) tidak boleh mendadak terkunci saat migrasi
+func TestNilPeriodNeverExpires(t *testing.T) {
+	b := NewBilling(&fakeSubs{sub: subView(1000, 1)}, &fakeUsage{tokens: 10})
+	q, err := b.Check(context.Background(), uuid.New(), time.Now())
+	if err != nil {
+		t.Fatalf("period NULL harus active: %v", err)
+	}
+	if q.Status != domain.SubActive {
+		t.Fatalf("mau active, dapat %q", q.Status)
+	}
+}
+
+// masa aktif habis lebih diprioritaskan daripada kuota: pesannya beda
+func TestExpiredBeatsOverflow(t *testing.T) {
+	v := expiredSub(domain.GraceDays + 1)
+	b := NewBilling(&fakeSubs{sub: v}, &fakeUsage{tokens: 999999})
+	if _, err := b.Check(context.Background(), uuid.New(), time.Now()); err != domain.ErrSubExpired {
+		t.Fatalf("expired harus menang atas overflow, dapat %v", err)
+	}
+}
+
+// Check tidak lagi error di hard: kebijakan degrade/blok milik RAG.gate.
+// Yang diblok Billing cuma overflow (plafon absolut).
+func TestBillingHardFlaggedNotBlocked(t *testing.T) {
+	// limit 1000/seat * 2 seats = 2000; sudah pakai 2000 -> hard, belum overflow
 	b := NewBilling(&fakeSubs{sub: subView(1000, 2)}, &fakeUsage{tokens: 2000})
-	_, err := b.Check(context.Background(), uuid.New(), time.Now())
-	if err != domain.ErrQuotaExceeded {
-		t.Fatalf("mau ErrQuotaExceeded, dapat %v", err)
+	q, err := b.Check(context.Background(), uuid.New(), time.Now())
+	if err != nil {
+		t.Fatalf("hard tidak boleh diblok di Billing (degrade urusan RAG): %v", err)
+	}
+	if !q.Hard || q.Overflow {
+		t.Fatalf("mau hard tanpa overflow, dapat hard=%v overflow=%v", q.Hard, q.Overflow)
+	}
+}
+
+func TestBillingBlocksAtOverflow(t *testing.T) {
+	// 2x limit -> plafon degrade tembus
+	b := NewBilling(&fakeSubs{sub: subView(1000, 2)}, &fakeUsage{tokens: 4000})
+	if _, err := b.Check(context.Background(), uuid.New(), time.Now()); err != domain.ErrQuotaExceeded {
+		t.Fatalf("mau ErrQuotaExceeded di overflow, dapat %v", err)
 	}
 }
 

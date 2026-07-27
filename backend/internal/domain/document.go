@@ -28,6 +28,7 @@ type Document struct {
 	StoragePath    string
 	Status         string
 	Error          *string
+	SourceURL      *string // asal ingest web; nil = upload biasa
 	CreatedAt      time.Time
 }
 
@@ -68,6 +69,8 @@ type DocumentRepository interface {
 	AnyByID(ctx context.Context, id uuid.UUID) (*Document, error)
 	InsertChunks(ctx context.Context, chunks []DocumentChunk) error
 	DeleteChunks(ctx context.Context, documentID uuid.UUID) error
+	// anti-duplikat ingest web; ErrNotFound kalau belum pernah
+	BySourceURL(ctx context.Context, orgID uuid.UUID, url string) (*Document, error)
 }
 
 type Extractor interface {

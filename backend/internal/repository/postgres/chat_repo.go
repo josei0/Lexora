@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -117,7 +118,7 @@ func (r *ChatRepo) Messages(ctx context.Context, chatID uuid.UUID) ([]domain.Mes
 	}
 
 	crows, err := r.db.Query(ctx, `
-		select c.id, c.message_id, c.document_chunk_id, c.document_id, c.reference_label, c.marker, c.page_no, c.score
+		select c.id, c.message_id, c.document_chunk_id, c.document_id, c.reference_label, c.marker, c.page_no, c.score, c.source_url
 		from citations c join messages m on m.id = c.message_id
 		where m.chat_id = $1 order by c.marker`, chatID)
 	if err != nil {
@@ -126,7 +127,7 @@ func (r *ChatRepo) Messages(ctx context.Context, chatID uuid.UUID) ([]domain.Mes
 	defer crows.Close()
 	for crows.Next() {
 		var c domain.Citation
-		if err := crows.Scan(&c.ID, &c.MessageID, &c.DocumentChunkID, &c.DocumentID, &c.ReferenceLabel, &c.Marker, &c.PageNo, &c.Score); err != nil {
+		if err := crows.Scan(&c.ID, &c.MessageID, &c.DocumentChunkID, &c.DocumentID, &c.ReferenceLabel, &c.Marker, &c.PageNo, &c.Score, &c.SourceURL); err != nil {
 			return nil, err
 		}
 		if i, ok := byID[c.MessageID]; ok {
@@ -136,6 +137,16 @@ func (r *ChatRepo) Messages(ctx context.Context, chatID uuid.UUID) ([]domain.Mes
 	return msgs, crows.Err()
 }
 
+// cap harian: hitung pesan user hari ini lintas semua chat miliknya
+func (r *ChatRepo) CountUserMessagesSince(ctx context.Context, orgID, userID uuid.UUID, since time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `
+		select count(*) from messages m join chats c on c.id = m.chat_id
+		where c.organization_id = $1 and c.user_id = $2 and m.role = 'user' and m.created_at >= $3`,
+		orgID, userID, since).Scan(&n)
+	return n, err
+}
+
 func (r *ChatRepo) AddCitations(ctx context.Context, cs []domain.Citation) error {
 	if len(cs) == 0 {
 		return nil
@@ -143,9 +154,9 @@ func (r *ChatRepo) AddCitations(ctx context.Context, cs []domain.Citation) error
 	batch := &pgx.Batch{}
 	for _, c := range cs {
 		batch.Queue(`
-			insert into citations (message_id, document_chunk_id, document_id, reference_label, marker, page_no, score)
-			values ($1, $2, $3, $4, $5, $6, $7)`,
-			c.MessageID, c.DocumentChunkID, c.DocumentID, c.ReferenceLabel, c.Marker, c.PageNo, c.Score)
+			insert into citations (message_id, document_chunk_id, document_id, reference_label, marker, page_no, score, source_url)
+			values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			c.MessageID, c.DocumentChunkID, c.DocumentID, c.ReferenceLabel, c.Marker, c.PageNo, c.Score, c.SourceURL)
 	}
 	br := r.db.SendBatch(ctx, batch)
 	defer br.Close()

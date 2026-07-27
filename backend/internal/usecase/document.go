@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -27,14 +28,22 @@ type Document struct {
 	docs    domain.DocumentRepository
 	storage domain.Storage
 	ingest  enqueuer
+	billing *Billing // ponytail: nil = tanpa gate langganan
 }
 
 func NewDocument(docs domain.DocumentRepository, st domain.Storage, ingest enqueuer) *Document {
 	return &Document{docs: docs, storage: st, ingest: ingest}
 }
 
-// upload: validate -> store -> insert(uploaded) -> enqueue. returns 202 doc
+func (d *Document) SetBilling(b *Billing) { d.billing = b }
+
+// upload: gate -> validate -> store -> insert(uploaded) -> enqueue. returns 202 doc
 func (d *Document) Upload(ctx context.Context, orgID, userID uuid.UUID, fileName string, data []byte) (*domain.Document, error) {
+	if d.billing != nil {
+		if err := d.billing.GateAccess(ctx, orgID, time.Now()); err != nil {
+			return nil, err
+		}
+	}
 	if len(data) == 0 {
 		return nil, domain.ErrInvalidUpload
 	}

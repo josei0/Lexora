@@ -15,22 +15,53 @@ const (
 )
 
 type Plan struct {
-	ID                uuid.UUID `json:"id"`
-	Code              string    `json:"code"`
-	Name              string    `json:"name"`
-	Model             string    `json:"model"`
-	PriceIDR          int64     `json:"price_idr"`
-	MonthlyTokenLimit int64     `json:"monthly_token_limit"` // per seat; 0 = unlimited
-	IsActive          bool      `json:"is_active"`
+	ID   uuid.UUID `json:"id"`
+	Code string    `json:"code"`
+	Name string    `json:"name"`
+	// json:"-" disengaja: nama model tidak pernah sampai ke klien, user lihat tier
+	// "AI High"/"AI Normal" saja. Ganti mesin = ganti env, bukan janji marketing.
+	Model             string `json:"-"`
+	PriceIDR          int64  `json:"price_idr"`
+	MonthlyTokenLimit int64  `json:"monthly_token_limit"` // per seat; 0 = unlimited
+	IsActive          bool   `json:"is_active"`
+	WebSearchEnabled  bool   `json:"web_search_enabled"`
+	DailyWebSearches  int    `json:"daily_web_searches"` // 0 = mati
+	DailyMessages     int    `json:"daily_messages"`     // 0 = tanpa cap
 }
+
+// status langganan dihitung dari tanggal, bukan disimpan: tidak butuh job
+// pengubah status, tidak bisa basi, satu sumber kebenaran.
+const (
+	SubActive  = "active"   // masih dalam periode
+	SubPastDue = "past_due" // lewat periode, masih dalam grace
+	SubExpired = "expired"  // lewat grace: read-only
+
+	GraceDays = 7
+)
 
 type Subscription struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
 	PlanID         uuid.UUID `json:"plan_id"`
 	Seats          int       `json:"seats"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	// nil = tanpa masa aktif (Demo / langganan lama) -> selalu active
+	CurrentPeriodEnd *time.Time `json:"current_period_end,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+func (s Subscription) StatusAt(now time.Time) string {
+	if s.CurrentPeriodEnd == nil {
+		return SubActive
+	}
+	switch {
+	case now.Before(*s.CurrentPeriodEnd):
+		return SubActive
+	case now.Before(s.CurrentPeriodEnd.AddDate(0, 0, GraceDays)):
+		return SubPastDue
+	default:
+		return SubExpired
+	}
 }
 
 type SubscriptionView struct {
@@ -76,4 +107,33 @@ type UsageRepository interface {
 	CountMembers(ctx context.Context, orgID uuid.UUID) (int, error)
 	ChatsSince(ctx context.Context, orgID uuid.UUID, t time.Time) (int, error)
 	DocCounts(ctx context.Context, orgID uuid.UUID) (indexed, total int, err error)
+}
+
+// paket top-up: harga + token dihitung server, tidak pernah dari FE
+type TopupPackage struct {
+	Code      string
+	Tokens    int64
+	PriceIDR  int64
+	LabelShort string // "500 ribu token"
+}
+
+// dua paket sesuai u5 §3.3; harga final = keputusan client
+var TopupPackages = map[string]TopupPackage{
+	"small": {Code: "small", Tokens: 500_000, PriceIDR: 79_000, LabelShort: "500 ribu token"},
+	"large": {Code: "large", Tokens: 1_000_000, PriceIDR: 149_000, LabelShort: "1 juta token"},
+}
+
+type QuotaTopup struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	InvoiceID      uuid.UUID `json:"invoice_id"`
+	Tokens         int64     `json:"tokens"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type TopupRepository interface {
+	// insert satu baris; idempoten via unique(invoice_id)
+	Create(ctx context.Context, t *QuotaTopup) error
+	// SUM tokens window bulan berjalan
+	SumTokens(ctx context.Context, orgID uuid.UUID, from, to time.Time) (int64, error)
 }

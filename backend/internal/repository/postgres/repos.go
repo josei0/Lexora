@@ -16,13 +16,15 @@ func NewUserRepo(db *pgxpool.Pool) *UserRepo { return &UserRepo{db} }
 
 func (r *UserRepo) ByEmail(ctx context.Context, email string) (*domain.User, error) {
 	return scanUser(r.db.QueryRow(ctx, `
-		select id, email, password_hash, full_name, system_role, is_active, must_change_password, created_at
+		select id, email, password_hash, full_name, system_role, is_active, must_change_password, created_at,
+		       totp_secret, totp_confirmed_at, totp_last_step
 		from users where email = $1`, email))
 }
 
 func (r *UserRepo) ByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	return scanUser(r.db.QueryRow(ctx, `
-		select id, email, password_hash, full_name, system_role, is_active, must_change_password, created_at
+		select id, email, password_hash, full_name, system_role, is_active, must_change_password, created_at,
+		       totp_secret, totp_confirmed_at, totp_last_step
 		from users where id = $1`, id))
 }
 
@@ -47,9 +49,25 @@ func (r *UserRepo) SetActive(ctx context.Context, id uuid.UUID, active bool) err
 	return err
 }
 
+func (r *UserRepo) SetTOTPSecret(ctx context.Context, id uuid.UUID, secret string) error {
+	_, err := r.db.Exec(ctx, `update users set totp_secret = $2, updated_at = now() where id = $1`, id, secret)
+	return err
+}
+
+func (r *UserRepo) ConfirmTOTP(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `update users set totp_confirmed_at = now(), updated_at = now() where id = $1`, id)
+	return err
+}
+
+func (r *UserRepo) SetTOTPLastStep(ctx context.Context, id uuid.UUID, step int64) error {
+	_, err := r.db.Exec(ctx, `update users set totp_last_step = $2 where id = $1`, id, step)
+	return err
+}
+
 func scanUser(row pgx.Row) (*domain.User, error) {
 	var u domain.User
-	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.FullName, &u.SystemRole, &u.IsActive, &u.MustChangePassword, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.FullName, &u.SystemRole, &u.IsActive, &u.MustChangePassword, &u.CreatedAt,
+		&u.TOTPSecret, &u.TOTPConfirmedAt, &u.TOTPLastStep)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

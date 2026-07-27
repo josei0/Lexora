@@ -13,17 +13,26 @@ export function getAccessToken() {
 
 export type Role = { system: string; org: string }
 
-// decode klaim role dari JWT access token (untuk gating UI, bukan otorisasi)
-export function currentRole(): Role | null {
+function jwtClaims(): Record<string, unknown> | null {
   if (!accessToken) return null
   try {
     const b64 = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
     const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : ''
-    const c = JSON.parse(atob(b64 + pad))
-    return { system: c.sys_role ?? 'none', org: c.org_role ?? '' }
+    return JSON.parse(atob(b64 + pad))
   } catch {
     return null
   }
+}
+
+// decode klaim role dari JWT access token (untuk gating UI, bukan otorisasi)
+export function currentRole(): Role | null {
+  const c = jwtClaims()
+  if (!c) return null
+  return { system: (c.sys_role as string) ?? 'none', org: (c.org_role as string) ?? '' }
+}
+
+export function currentUserId(): string {
+  return (jwtClaims()?.sub as string) ?? ''
 }
 
 export type Tokens = {
@@ -68,6 +77,139 @@ export async function login(email: string, password: string): Promise<Tokens> {
   const tok: Tokens = await res.json()
   accessToken = tok.access_token
   return tok
+}
+
+// login admin 2 langkah: password -> (enroll | mfa) -> token
+export type AdminLoginStep = {
+  enroll_required?: boolean
+  mfa_required?: boolean
+  otpauth_url?: string
+}
+
+export type AdminTokens = Tokens & { recovery_codes?: string[] }
+
+async function postAdminAuth<T>(path: string, body: object): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw await parseError(res)
+  return res.json() as Promise<T>
+}
+
+export async function adminLogin(email: string, password: string): Promise<AdminLoginStep> {
+  return postAdminAuth<AdminLoginStep>('/auth/admin/login', { email, password })
+}
+
+export async function adminEnroll(email: string, password: string, code: string): Promise<AdminTokens> {
+  const tok = await postAdminAuth<AdminTokens>('/auth/admin/enroll', { email, password, code })
+  accessToken = tok.access_token
+  return tok
+}
+
+export async function adminVerify(email: string, password: string, code: string): Promise<Tokens> {
+  const tok = await postAdminAuth<Tokens>('/auth/admin/verify', { email, password, code })
+  accessToken = tok.access_token
+  return tok
+}
+
+// anggota org (org_admin only)
+export type Member = {
+  user_id: string
+  email: string
+  full_name: string
+  role: 'org_admin' | 'member'
+  is_active: boolean
+}
+
+export type NewMember = {
+  user_id: string
+  email: string
+  temp_password: string
+}
+
+// sumber web -> pustaka (org_admin)
+export type WebResult = { title: string; url: string; snippet: string }
+export type WebPreview = { title: string; text: string; chars: number }
+export type WebCandidate = { url: string; hits: number; last_at: string }
+
+export function searchWebSources(query: string, limit = 4): Promise<WebResult[]> {
+  return api<WebResult[]>('/web-sources/search', {
+    method: 'POST',
+    body: JSON.stringify({ query, limit }),
+  })
+}
+
+export function previewWebSource(url: string): Promise<WebPreview> {
+  return api<WebPreview>('/web-sources/preview', { method: 'POST', body: JSON.stringify({ url }) })
+}
+
+export function ingestWebSource(url: string): Promise<{ id: string; file_name: string }> {
+  return api<{ id: string; file_name: string }>('/web-sources/ingest', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
+}
+
+export function listWebCandidates(): Promise<WebCandidate[]> {
+  return api<WebCandidate[]>('/web-sources/candidates')
+}
+
+// tagihan (org_admin): riwayat invoice org sendiri
+export type Invoice = {
+  id: string
+  type: 'subscription' | 'topup'
+  package_code?: string
+  seats: number
+  amount_idr: number
+  period_start: string
+  period_end: string
+  status: 'pending' | 'paid' | 'expired' | 'void'
+  paid_at?: string
+  created_at: string
+}
+
+export function listInvoices(): Promise<Invoice[]> {
+  return api<Invoice[]>('/invoices')
+}
+
+// paket top-up: harga final ditentukan server, FE hanya kirim code
+export type TopupPackage = { code: 'small' | 'large'; label: string; tokens: number; price_idr: number }
+
+export const TOPUP_PACKAGES: TopupPackage[] = [
+  { code: 'small', label: '500 ribu token', tokens: 500_000, price_idr: 79_000 },
+  { code: 'large', label: '1 juta token', tokens: 1_000_000, price_idr: 149_000 },
+]
+
+// buat invoice top-up pending; pelunasan manual super_admin (fase 12: gateway)
+export function createTopup(packageCode: 'small' | 'large'): Promise<Invoice> {
+  return api<Invoice>('/billing/topup', {
+    method: 'POST',
+    body: JSON.stringify({ package_code: packageCode }),
+  })
+}
+
+export function listMembers(): Promise<Member[]> {
+  return api<Member[]>('/members')
+}
+
+export function addMember(email: string, fullName: string, role: Member['role']): Promise<NewMember> {
+  return api<NewMember>('/members', {
+    method: 'POST',
+    body: JSON.stringify({ email, full_name: fullName, role }),
+  })
+}
+
+export function updateMember(
+  userId: string,
+  patch: { role?: Member['role']; is_active?: boolean },
+): Promise<Member> {
+  return api<Member>(`/members/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
 }
 
 // dedup concurrent callers so token rotation isn't raced (strict-mode mount, parallel 401s)
@@ -159,13 +301,13 @@ export type Citation = {
   document_id?: string
   page_no?: number
   score: number
+  url?: string // terisi = sumber web
 }
 
 export type Message = {
   id: string
   role: 'user' | 'assistant'
   content: string
-  model?: string
   created_at: string
   citations: Citation[]
 }
@@ -195,18 +337,32 @@ export function deleteChat(chatId: string) {
   return api<void>(`/chats/${chatId}`, { method: 'DELETE' })
 }
 
+// soft = pemakaian >= 80%, degraded = jatah High habis, jawaban lewat Normal
+export type QuotaFlags = { soft?: boolean; degraded?: boolean }
+// skipped: 'plan' | 'quota' | 'failed'
+export type WebFlags = { used?: boolean; skipped?: string }
+
 type StreamHandlers = {
   onToken: (token: string) => void
-  onDone: (citations: Citation[], messageId: string) => void
+  onStatus?: (status: string) => void
+  onDone: (citations: Citation[], messageId: string, quota?: QuotaFlags, web?: WebFlags) => void
   onError: (message: string) => void
 }
 
 // SSE lewat fetch + ReadableStream (EventSource tidak bisa kirim bearer)
-export async function askStream(chatId: string, content: string, files: File[], h: StreamHandlers) {
+export async function askStream(
+  chatId: string,
+  content: string,
+  files: File[],
+  h: StreamHandlers,
+  webSearch = false,
+) {
   const doFetch = () => {
     // multipart: browser set boundary sendiri, jangan set Content-Type
     const form = new FormData()
     form.append('content', content)
+    // lampiran menang: backend abaikan web_search kalau ada file
+    if (webSearch && files.length === 0) form.append('web_search', 'true')
     for (const f of files) form.append('files', f)
     return fetch(`${BASE}/chats/${chatId}/messages`, {
       method: 'POST',
@@ -240,7 +396,8 @@ export async function askStream(chatId: string, content: string, files: File[], 
       try {
         const evt = JSON.parse(line.slice(5).trim())
         if (evt.error) h.onError(evt.error)
-        else if (evt.done) h.onDone(evt.citations ?? [], evt.message_id)
+        else if (evt.done) h.onDone(evt.citations ?? [], evt.message_id, evt.quota, evt.web)
+        else if (evt.status) h.onStatus?.(evt.status)
         else if (evt.token) h.onToken(evt.token)
       } catch {
         // frame belum utuh
@@ -255,10 +412,16 @@ export type Plan = {
   id: string
   code: string
   name: string
-  model: string
   price_idr: number
   monthly_token_limit: number
   is_active: boolean
+}
+
+// label tier ke user; nama model sengaja tidak pernah dikirim backend
+export type Tier = 'high' | 'normal'
+
+export function tierLabel(t: Tier | undefined) {
+  return t === 'normal' ? 'AI Normal' : 'AI High'
 }
 
 export type SubscriptionView = {
@@ -266,6 +429,7 @@ export type SubscriptionView = {
   organization_id: string
   plan_id: string
   seats: number
+  current_period_end?: string
   created_at: string
   updated_at: string
   plan: Plan
@@ -281,12 +445,17 @@ export type DashboardStats = {
   seats: number
 }
 
+export type SubStatus = 'active' | 'past_due' | 'expired'
+
 export type Quota = {
   limit: number
   used: number
   remaining: number
   soft: boolean
   hard: boolean
+  overflow: boolean
+  tier: Tier
+  status: SubStatus
 }
 
 export type PromptData = {

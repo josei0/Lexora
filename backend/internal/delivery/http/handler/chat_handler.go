@@ -46,13 +46,15 @@ type citationJSON struct {
 	DocumentID string  `json:"document_id,omitempty"`
 	PageNo     *int    `json:"page_no,omitempty"`
 	Score      float32 `json:"score"`
+	SourceURL  *string `json:"url,omitempty"` // terisi = sumber web
 }
 
+// model sengaja tidak diekspos: user lihat tier, bukan nama model (U15).
+// Tetap tersimpan di kolom messages.model untuk audit internal.
 type messageJSON struct {
 	ID        string         `json:"id"`
 	Role      string         `json:"role"`
 	Content   string         `json:"content"`
-	Model     *string        `json:"model,omitempty"`
 	CreatedAt string         `json:"created_at"`
 	Citations []citationJSON `json:"citations"`
 }
@@ -173,7 +175,7 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	content, atts, err := parseAsk(r)
+	content, atts, webSearch, err := parseAsk(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "body tidak valid")
 		return
@@ -201,7 +203,12 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	msg, err := a.rag.Ask(r.Context(), chatID, id.OrgID, id.UserID, content, atts, func(tok string) {
+	opts := usecase.AskOpts{
+		WebSearch: webSearch,
+		// search 2-5 detik sebelum token pertama; tanpa ini UI terlihat menggantung
+		OnStatus: func(s string) { send(map[string]string{"status": s}) },
+	}
+	msg, meta, err := a.rag.Ask(r.Context(), chatID, id.OrgID, id.UserID, content, atts, opts, func(tok string) {
 		send(map[string]string{"token": tok})
 	})
 	if err != nil {
@@ -209,25 +216,33 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 		send(map[string]string{"error": sseError(err)})
 		return
 	}
-	send(map[string]any{"done": true, "message_id": msg.ID, "citations": toCitationsJSON(msg.Citations)})
+	done := map[string]any{"done": true, "message_id": msg.ID, "citations": toCitationsJSON(msg.Citations)}
+	if meta.Soft || meta.Degraded {
+		done["quota"] = map[string]bool{"soft": meta.Soft, "degraded": meta.Degraded}
+	}
+	if meta.WebUsed || meta.WebSkipped != "" {
+		done["web"] = map[string]any{"used": meta.WebUsed, "skipped": meta.WebSkipped}
+	}
+	send(done)
 }
 
-// baca pertanyaan + lampiran dari multipart (ada file) atau JSON (teks saja)
-func parseAsk(r *http.Request) (string, []domain.Attachment, error) {
+// baca pertanyaan + lampiran + flag web dari multipart (ada file) atau JSON (teks saja).
+// Lampiran menang: kalau ada file, web_search diabaikan (jalur lampiran bypass RAG)
+func parseAsk(r *http.Request) (string, []domain.Attachment, bool, error) {
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
-			return "", nil, err
+			return "", nil, false, err
 		}
 		var atts []domain.Attachment
 		for _, fh := range r.MultipartForm.File["files"] {
 			f, err := fh.Open()
 			if err != nil {
-				return "", nil, err
+				return "", nil, false, err
 			}
 			data, err := io.ReadAll(f)
 			f.Close()
 			if err != nil {
-				return "", nil, err
+				return "", nil, false, err
 			}
 			mime := fh.Header.Get("Content-Type")
 			if mime == "" {
@@ -235,15 +250,16 @@ func parseAsk(r *http.Request) (string, []domain.Attachment, error) {
 			}
 			atts = append(atts, domain.Attachment{Name: fh.Filename, Mime: mime, Data: data})
 		}
-		return r.FormValue("content"), atts, nil
+		return r.FormValue("content"), atts, r.FormValue("web_search") == "true" && len(atts) == 0, nil
 	}
 	var body struct {
-		Content string `json:"content"`
+		Content   string `json:"content"`
+		WebSearch bool   `json:"web_search"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
-	return body.Content, nil, nil
+	return body.Content, nil, body.WebSearch, nil
 }
 
 func sseError(err error) string {
@@ -252,6 +268,12 @@ func sseError(err error) string {
 		return "percakapan tidak ditemukan"
 	case errors.Is(err, domain.ErrInvalidUpload):
 		return "pertanyaan kosong"
+	case errors.Is(err, domain.ErrQuotaExceeded):
+		return "kuota bulan ini habis, hubungi admin untuk menambah kuota"
+	case errors.Is(err, domain.ErrSubExpired):
+		return "masa aktif langganan berakhir, perpanjang untuk melanjutkan"
+	case errors.Is(err, domain.ErrDailyCapReached):
+		return "batas pertanyaan harian tercapai, coba lagi besok atau tingkatkan paket"
 	default:
 		return "gagal memproses pertanyaan"
 	}
@@ -303,7 +325,6 @@ func toMessageJSON(m *domain.Message) messageJSON {
 		ID:        m.ID.String(),
 		Role:      m.Role,
 		Content:   m.Content,
-		Model:     m.Model,
 		CreatedAt: m.CreatedAt.Format(timeLayout),
 		Citations: toCitationsJSON(m.Citations),
 	}
@@ -312,7 +333,7 @@ func toMessageJSON(m *domain.Message) messageJSON {
 func toCitationsJSON(cits []domain.Citation) []citationJSON {
 	out := make([]citationJSON, len(cits))
 	for i, c := range cits {
-		out[i] = citationJSON{Marker: c.Marker, Label: c.ReferenceLabel, PageNo: c.PageNo, Score: c.Score}
+		out[i] = citationJSON{Marker: c.Marker, Label: c.ReferenceLabel, PageNo: c.PageNo, Score: c.Score, SourceURL: c.SourceURL}
 		if c.DocumentID != nil {
 			out[i].DocumentID = c.DocumentID.String()
 		}
@@ -336,6 +357,10 @@ func writeErr(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not_found", "tidak ditemukan")
 	case errors.Is(err, domain.ErrInvalidUpload):
 		writeError(w, http.StatusBadRequest, "invalid_request", "permintaan tidak valid")
+	case errors.Is(err, domain.ErrSubExpired):
+		writeError(w, http.StatusPaymentRequired, "subscription_expired", "masa aktif langganan berakhir, perpanjang untuk melanjutkan")
+	case errors.Is(err, domain.ErrQuotaExceeded):
+		writeError(w, http.StatusPaymentRequired, "quota_exceeded", "kuota bulan ini habis")
 	default:
 		writeError(w, http.StatusInternalServerError, "internal", "terjadi kesalahan")
 	}

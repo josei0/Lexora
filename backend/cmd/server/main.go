@@ -19,7 +19,34 @@ import (
 	"github.com/lexora/backend/pkg/jwt"
 	"github.com/lexora/backend/pkg/llm"
 	"github.com/lexora/backend/pkg/storage"
+	"github.com/lexora/backend/pkg/websearch"
 )
+
+// ticker harian: terbitkan invoice renewal H-7 + retensi web_searches 90 hari.
+// Satu ticker untuk semua job harian (update5 §8). Recovery: jalan sekali saat start.
+// ponytail: pindah ke job terjadwal kalau nanti ada banyak job
+func dailyJobs(ctx context.Context, invUC *usecase.Invoice, searches *postgres.WebSearchRepo) {
+	const retention = 90 * 24 * time.Hour
+	t := time.NewTicker(24 * time.Hour)
+	defer t.Stop()
+	for {
+		if n, err := invUC.CreateRenewals(ctx, time.Now()); err != nil {
+			log.Printf("invoice renewal: %v", err)
+		} else if n > 0 {
+			log.Printf("invoice renewal: %d invoice terbit", n)
+		}
+		if n, err := searches.DeleteOlderThan(ctx, time.Now().Add(-retention)); err != nil {
+			log.Printf("retensi web_searches: %v", err)
+		} else if n > 0 {
+			log.Printf("retensi web_searches: %d baris dihapus", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
 
 func main() {
 	config.LoadDotenv(".env")
@@ -48,11 +75,12 @@ func main() {
 	refreshRepo := postgres.NewRefreshRepo(pool)
 	docRepo := postgres.NewDocumentRepo(pool)
 
-	authUC := usecase.NewAuth(userRepo, memberRepo, refreshRepo, signer, adminSigner, cfg.JWTRefreshTTL)
+	recoveryRepo := postgres.NewRecoveryRepo(pool)
+	authUC := usecase.NewAuth(userRepo, memberRepo, refreshRepo, recoveryRepo, signer, adminSigner, cfg.JWTRefreshTTL)
 	orgUC := usecase.NewOrganization(orgRepo, userRepo, memberRepo)
 
 	store := storage.NewLocal(cfg.StorageDir)
-	extractor := extract.New()
+	extractor := extract.New(true) // ingestion: OCR halaman scan
 	embedder := embedding.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.EmbeddingModel, cfg.EmbeddingDim)
 	vectors := qdrant.New(cfg.QdrantURL)
 	ingestUC := usecase.NewIngestion(docRepo, store, extractor, embedder, vectors)
@@ -61,9 +89,14 @@ func main() {
 
 	docUC := usecase.NewDocument(docRepo, store, ingestUC)
 
+	guard := websearch.NewGuard(cfg.WebSearchDomains)
+	searchProvider := websearch.NewMaiaSearch(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.WebSearchModel, cfg.WebSearchDomains)
+	webUC := usecase.NewWebIngest(docRepo, store, websearch.NewFetcher(guard), searchProvider, ingestUC)
+
 	chatRepo := postgres.NewChatRepo(pool)
-	chatLLM := llm.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.ChatModel)
-	ragUC := usecase.NewRAG(chatRepo, embedder, vectors, chatLLM, cfg.RAGTopK, cfg.RAGMinScore)
+	llmHigh := llm.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.ChatModelHigh)
+	llmNormal := llm.NewMaia(cfg.EmbeddingURL, cfg.MaiaAPIKey, cfg.ChatModelNormal)
+	ragUC := usecase.NewRAG(chatRepo, embedder, vectors, llmHigh, llmNormal, cfg.RAGTopK, cfg.RAGMinScore)
 
 	planRepo := postgres.NewPlanRepo(pool)
 	subRepo := postgres.NewSubscriptionRepo(pool)
@@ -76,9 +109,20 @@ func main() {
 	promptUC := usecase.NewPrompt(promptRepo)
 	exportUC := usecase.NewExport(ragUC)
 
+	searchRepo := postgres.NewWebSearchRepo(pool)
+	invoiceRepo := postgres.NewInvoiceRepo(pool)
+	invoiceUC := usecase.NewInvoice(invoiceRepo)
+	topupRepo := postgres.NewTopupRepo(pool)
+	billingUC.SetTopup(topupRepo)
+	invoiceUC.SetTopup(subRepo, topupRepo)
 	ragUC.SetBilling(billingUC)
+	ragUC.SetWebSearch(searchProvider, searchRepo)
+	docUC.SetBilling(billingUC)
+	webUC.SetBilling(billingUC)
+	webUC.SetWebSearchRepo(searchRepo)
+	go dailyJobs(ctx, invoiceUC, searchRepo)
 	ragUC.SetPrompts(promptRepo)
-	ragUC.SetExtractor(extractor)
+	ragUC.SetExtractor(extract.New(false)) // lampiran chat sinkron: tanpa OCR
 	orgUC.SetSeatGuard(subUC)
 
 	auditRepo := postgres.NewAuditRepo(pool)
@@ -86,8 +130,10 @@ func main() {
 
 	api := handler.New(authUC, orgUC, docUC, auditUC, cfg.JWTRefreshTTL, cfg.CookieSecure, cfg.CORSOriginsAdmin)
 	chatAPI := handler.NewChatAPI(ragUC)
-	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC, auditUC)
-	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, signer, adminSigner, cfg.CORSOriginsApp, cfg.CORSOriginsAdmin)
+	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC, auditUC, cfg.ChatModelNormal)
+	webAPI := handler.NewWebAPI(webUC, auditUC)
+	invoiceAPI := handler.NewInvoiceAPI(invoiceUC, auditUC)
+	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, webAPI, invoiceAPI, signer, adminSigner, cfg.CORSOriginsApp, cfg.CORSOriginsAdmin)
 	server := httpdelivery.NewServer(cfg.Port, router)
 
 	go func() {

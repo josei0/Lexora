@@ -17,9 +17,10 @@ type Config struct {
 	JWTAccessTTL   time.Duration
 	JWTRefreshTTL  time.Duration
 
-	ChatModel   string
-	RAGTopK     int
-	RAGMinScore float32
+	ChatModelHigh   string // tier High (Pro)
+	ChatModelNormal string // tier Normal (Demo + degrade Pro)
+	RAGTopK         int
+	RAGMinScore     float32
 
 	EmbeddingProvider string
 	EmbeddingURL      string
@@ -28,6 +29,9 @@ type Config struct {
 	MaiaAPIKey        string
 
 	StorageDir string
+
+	WebSearchModel   string
+	WebSearchDomains []string // allowlist ingest + filter hasil search
 
 	CORSOriginsApp   []string // origin app
 	CORSOriginsAdmin []string // origin admin
@@ -44,7 +48,8 @@ func Load() (*Config, error) {
 		QdrantURL:          env("QDRANT_URL", "http://localhost:6333"),
 		JWTSecret:          env("JWT_SECRET", ""),
 		JWTAdminSecret:     env("JWT_ADMIN_SECRET", ""),
-		ChatModel:          env("CHAT_MODEL", "maia/claude-sonnet-4-5"),
+		ChatModelHigh:      env("CHAT_MODEL_HIGH", env("CHAT_MODEL", "maia/claude-sonnet-4-5")), // CHAT_MODEL = nama lama
+		ChatModelNormal:    env("CHAT_MODEL_NORMAL", "anthropic/claude-haiku-4-5"),
 		EmbeddingProvider:  env("EMBEDDING_PROVIDER", "maia"),
 		EmbeddingURL:       env("EMBEDDING_URL", "https://api.maiarouter.ai/v1"),
 		EmbeddingModel:     env("EMBEDDING_MODEL", "openai/text-embedding-3-large"),
@@ -59,6 +64,8 @@ func Load() (*Config, error) {
 	c.EmbeddingDim = envInt("EMBEDDING_DIM", 3072)
 	c.RAGTopK = envInt("RAG_TOP_K", 5)
 	c.RAGMinScore = float32(envInt("RAG_MIN_SCORE_PCT", 35)) / 100
+	c.WebSearchModel = env("WEB_SEARCH_MODEL", "openai/gpt-4o-mini-search-preview")
+	c.WebSearchDomains = splitCSV(env("WEB_SEARCH_DOMAINS", "peraturan.bpk.go.id,peraturan.go.id,jdihn.go.id,putusan3.mahkamahagung.go.id"))
 	c.CORSOriginsApp = splitCSV(env("CORS_ORIGINS_APP", "http://localhost:3000"))
 	c.CORSOriginsAdmin = splitCSV(env("CORS_ORIGINS_ADMIN", "https://admin.lvh.me"))
 	c.CookieSecure = env("COOKIE_SECURE", "false") == "true"

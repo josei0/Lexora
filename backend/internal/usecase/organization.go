@@ -35,6 +35,13 @@ func (o *Organization) Create(ctx context.Context, name, slug, adminEmail, admin
 	if err := o.orgs.Create(ctx, org); err != nil {
 		return nil, nil, err
 	}
+	// auto-assign Demo: tutup celah "tanpa subscription = unlimited".
+	// Demo tanpa current_period_end -> tidak pernah expired.
+	if o.seats != nil {
+		if _, err := o.seats.Assign(ctx, org.ID, domain.PlanDemo, 1); err != nil {
+			return nil, nil, err
+		}
+	}
 	admin, err := o.addUser(ctx, org.ID, adminEmail, adminName, domain.OrgRoleAdmin)
 	if err != nil {
 		return nil, nil, err

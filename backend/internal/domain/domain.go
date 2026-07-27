@@ -18,6 +18,8 @@ var (
 	ErrWrongPassword = errors.New("wrong password")
 	ErrRateLimited   = errors.New("rate limited")
 	ErrQuotaExceeded = errors.New("quota exceeded")
+	ErrSubExpired      = errors.New("subscription expired")
+	ErrDailyCapReached = errors.New("daily message cap reached")
 	ErrSeatsFull     = errors.New("seats full")
 
 	ErrInvalidUpload   = errors.New("invalid upload")
@@ -41,6 +43,19 @@ type User struct {
 	IsActive           bool
 	MustChangePassword bool
 	CreatedAt          time.Time
+
+	// TOTP super_admin: secret terisi + confirmed nil = enrollment menggantung
+	TOTPSecret      *string
+	TOTPConfirmedAt *time.Time
+	TOTPLastStep    int64 // step terakhir terpakai - anti-replay (T19)
+}
+
+// kode recovery TOTP sekali pakai
+type RecoveryCode struct {
+	ID       uuid.UUID
+	UserID   uuid.UUID
+	CodeHash string
+	UsedAt   *time.Time
 }
 
 type Organization struct {
@@ -89,6 +104,15 @@ type UserRepository interface {
 	Create(ctx context.Context, u *User) error
 	UpdatePassword(ctx context.Context, id uuid.UUID, hash string) error
 	SetActive(ctx context.Context, id uuid.UUID, active bool) error
+	SetTOTPSecret(ctx context.Context, id uuid.UUID, secret string) error
+	ConfirmTOTP(ctx context.Context, id uuid.UUID) error
+	SetTOTPLastStep(ctx context.Context, id uuid.UUID, step int64) error
+}
+
+type RecoveryCodeRepository interface {
+	Replace(ctx context.Context, userID uuid.UUID, hashes []string) error
+	Unused(ctx context.Context, userID uuid.UUID) ([]RecoveryCode, error)
+	MarkUsed(ctx context.Context, id uuid.UUID) error
 }
 
 type OrganizationRepository interface {

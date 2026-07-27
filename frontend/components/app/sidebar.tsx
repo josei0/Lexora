@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, LayoutDashboard, LogOut, MessageSquare, Settings, ShieldCheck } from 'lucide-react'
+import { FileText, Globe, LayoutDashboard, LogOut, MessageSquare, Receipt, Settings, ShieldCheck, Users } from 'lucide-react'
 import Link from 'next/link'
 
 import { Button } from '@/components/ui/button'
@@ -14,12 +14,24 @@ const tenantNav = [
   { href: '/app/settings', label: 'Pengaturan', icon: Settings },
 ]
 
+// disisipkan sebelum Pengaturan, org_admin only (pengelola pustaka + anggota)
+const orgAdminNav = [
+  { href: '/app/web-sources', label: 'Sumber web', icon: Globe },
+  { href: '/app/members', label: 'Anggota', icon: Users },
+  { href: '/app/billing', label: 'Tagihan', icon: Receipt },
+]
+
 // super_admin tak punya org: menu tenant pasti "akses ditolak". Tampilkan panel admin saja.
 const adminNav = [{ href: '/app/admin', label: 'Admin', icon: ShieldCheck }]
 
 export function AppSidebar() {
   const { logout, role } = useAuth()
-  const nav = role?.system === 'super_admin' ? adminNav : tenantNav
+  const nav =
+    role?.system === 'super_admin'
+      ? adminNav
+      : role?.org === 'org_admin'
+        ? [...tenantNav.slice(0, -1), ...orgAdminNav, tenantNav[tenantNav.length - 1]]
+        : tenantNav
   return (
     <aside className="flex w-60 flex-col border-r border-sidebar-border bg-sidebar p-4">
       <div className="mb-8 px-2 font-serif text-2xl text-sidebar-foreground">

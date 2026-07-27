@@ -128,7 +128,8 @@ func RateLimitLogin(next http.Handler) http.Handler {
 	l := newLimiter(5, time.Minute)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
-		if (strings.HasSuffix(p, "/auth/login") || strings.HasSuffix(p, "/auth/admin/login")) && !l.allow(clientIP(r)) {
+		if (strings.HasSuffix(p, "/auth/login") || strings.HasSuffix(p, "/auth/admin/login") ||
+			strings.HasSuffix(p, "/auth/admin/enroll") || strings.HasSuffix(p, "/auth/admin/verify")) && !l.allow(clientIP(r)) {
 			writeError(w, http.StatusTooManyRequests, "rate_limited", "terlalu banyak percobaan, coba lagi nanti")
 			return
 		}

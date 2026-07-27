@@ -13,12 +13,13 @@ import (
 )
 
 type BillingAPI struct {
-	subs      *usecase.Subscription
-	dashboard *usecase.Dashboard
-	prompt    *usecase.Prompt
-	export    *usecase.Export
-	billing   *usecase.Billing
-	audit     *usecase.Audit
+	subs        *usecase.Subscription
+	dashboard   *usecase.Dashboard
+	prompt      *usecase.Prompt
+	export      *usecase.Export
+	billing     *usecase.Billing
+	audit       *usecase.Audit
+	normalModel string // pembanding tier; nama model tidak pernah dikirim ke klien
 }
 
 func NewBillingAPI(
@@ -28,8 +29,9 @@ func NewBillingAPI(
 	export *usecase.Export,
 	billing *usecase.Billing,
 	audit *usecase.Audit,
+	normalModel string,
 ) *BillingAPI {
-	return &BillingAPI{subs: subs, dashboard: dash, prompt: prompt, export: export, billing: billing, audit: audit}
+	return &BillingAPI{subs: subs, dashboard: dash, prompt: prompt, export: export, billing: billing, audit: audit, normalModel: normalModel}
 }
 
 func (a *BillingAPI) Routes(mux *http.ServeMux) {
@@ -80,12 +82,19 @@ func (a *BillingAPI) quota(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	tier := "high"
+	if q.Plan != nil && q.Plan.Model == a.normalModel {
+		tier = "normal"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"limit":     q.Limit,
 		"used":      q.Used,
 		"remaining": q.Remaining(),
 		"soft":      q.Soft,
 		"hard":      q.Hard,
+		"overflow":  q.Overflow,
+		"tier":      tier, // label saja: "high"/"normal", bukan nama model
+		"status":    q.Status,
 	})
 }
 
@@ -254,6 +263,12 @@ func (a *BillingAPI) exportChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	format := r.URL.Query().Get("format")
+
+	// export = fitur menulis: ikut gate masa aktif (baca chat tetap bisa)
+	if err := a.billing.GateAccess(r.Context(), id.OrgID, time.Now()); err != nil {
+		writeErr(w, err)
+		return
+	}
 
 	title, htmlDoc, err := a.export.ChatHTML(r.Context(), chatID, id.OrgID, id.UserID)
 	if err != nil {

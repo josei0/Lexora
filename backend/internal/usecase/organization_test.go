@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lexora/backend/internal/domain"
@@ -37,6 +38,19 @@ func (f *fakeUsers) UpdatePassword(_ context.Context, id uuid.UUID, h string) er
 }
 func (f *fakeUsers) SetActive(_ context.Context, id uuid.UUID, a bool) error {
 	f.m[id].IsActive = a
+	return nil
+}
+func (f *fakeUsers) SetTOTPSecret(_ context.Context, id uuid.UUID, s string) error {
+	f.m[id].TOTPSecret = &s
+	return nil
+}
+func (f *fakeUsers) ConfirmTOTP(_ context.Context, id uuid.UUID) error {
+	now := time.Now()
+	f.m[id].TOTPConfirmedAt = &now
+	return nil
+}
+func (f *fakeUsers) SetTOTPLastStep(_ context.Context, id uuid.UUID, step int64) error {
+	f.m[id].TOTPLastStep = step
 	return nil
 }
 
