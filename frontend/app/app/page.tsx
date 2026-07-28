@@ -9,7 +9,7 @@ export default function AppHome() {
   const { mustChangePassword } = useAuth()
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-2 font-serif text-3xl">Selamat datang di Lexora</h1>
+      <h1 className="mb-2 font-serif text-3xl">Selamat datang di MindLaw</h1>
       <p className="mb-8 text-muted-foreground">
         Platform kecerdasan hukum untuk profesional Indonesia.
       </p>

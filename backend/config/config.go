@@ -55,7 +55,7 @@ func Load() (*Config, error) {
 		EmbeddingModel:     env("EMBEDDING_MODEL", "openai/text-embedding-3-large"),
 		MaiaAPIKey:         env("MAIA_API_KEY", ""),
 		StorageDir:         env("STORAGE_DIR", "./storage"),
-		SuperAdminEmail:    env("SUPERADMIN_EMAIL", "admin@lexora.id"),
+		SuperAdminEmail:    env("SUPERADMIN_EMAIL", "admin@mindlaw.web.id"),
 		SuperAdminPassword: env("SUPERADMIN_PASSWORD", ""),
 	}
 

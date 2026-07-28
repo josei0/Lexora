@@ -19,7 +19,7 @@ export function Stats() {
             Dirancang mengembalikan waktu para advokat.
           </h2>
           <p className="mt-4 text-pretty text-lg leading-relaxed text-primary-foreground/70">
-            Firma yang memakai Lexora menghabiskan lebih sedikit waktu untuk
+            Firma yang memakai MindLaw menghabiskan lebih sedikit waktu untuk
             peninjauan manual dan lebih banyak untuk strategi, nasihat, serta
             pekerjaan yang hanya bisa dilakukan seorang advokat.
           </p>

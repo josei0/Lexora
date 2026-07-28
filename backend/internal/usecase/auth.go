@@ -75,7 +75,7 @@ type AdminStep struct {
 	RecoveryCodes  []string // sekali tampil, setelah enroll sukses
 }
 
-const totpIssuer = "Lexora Admin"
+const totpIssuer = "MindLaw Admin"
 
 // kredensial dasar admin, dipakai ketiga langkah (stateless: password ikut tiap call)
 func (a *Auth) adminUser(ctx context.Context, email, password string) (*domain.User, error) {

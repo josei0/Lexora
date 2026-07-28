@@ -51,7 +51,7 @@ h1{font-size:22px;border-bottom:2px solid #333;padding-bottom:8px}
 	for _, m := range msgs {
 		role := "Anda"
 		if m.Role == domain.RoleAssistant {
-			role = "Lexora"
+			role = "MindLaw"
 		}
 		b.WriteString(`<div class="msg"><div class="role">` + role + `</div>`)
 		b.WriteString(`<div class="content">` + html.EscapeString(m.Content) + `</div>`)
@@ -68,7 +68,7 @@ h1{font-size:22px;border-bottom:2px solid #333;padding-bottom:8px}
 		}
 		b.WriteString(`</div>`)
 	}
-	b.WriteString(`<div class="brand">Diekspor dari Lexora — asisten hukum Indonesia</div>`)
+	b.WriteString(`<div class="brand">Diekspor dari MindLaw — asisten hukum Indonesia</div>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
 }

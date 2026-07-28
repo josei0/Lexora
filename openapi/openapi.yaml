@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Lexora API
+  title: MindLaw API
   version: 0.1.0
   description: AI legal assistant platform. Spec-first contract.
 servers:

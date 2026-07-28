@@ -8,7 +8,7 @@ export function CTA() {
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="relative overflow-hidden rounded-sm bg-primary px-8 py-16 text-center text-primary-foreground sm:px-16 lg:py-20">
           <h2 className="mx-auto max-w-2xl text-balance font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
-            Lihat apa yang bisa Lexora lakukan untuk firma Anda.
+            Lihat apa yang bisa MindLaw lakukan untuk firma Anda.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-pretty text-lg leading-relaxed text-primary-foreground/70">
             Jadwalkan sesi peninjauan privat bersama tim solusi hukum kami dan

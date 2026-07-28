@@ -22,7 +22,7 @@ const orgAdminNav = [
 ]
 
 // super_admin tak punya org: menu tenant pasti "akses ditolak". Tampilkan panel admin saja.
-const adminNav = [{ href: '/app/admin', label: 'Admin', icon: ShieldCheck }]
+const adminNav = [{ href: '/admin', label: 'Admin', icon: ShieldCheck }]
 
 export function AppSidebar() {
   const { logout, role } = useAuth()
@@ -35,7 +35,7 @@ export function AppSidebar() {
   return (
     <aside className="flex w-60 flex-col border-r border-sidebar-border bg-sidebar p-4">
       <div className="mb-8 px-2 font-serif text-2xl text-sidebar-foreground">
-        Lexora
+        MindLaw
         {role?.system === 'super_admin' && (
           <span className="ml-2 rounded bg-primary/15 px-1.5 py-0.5 align-middle text-xs font-medium text-primary">
             Admin

@@ -46,7 +46,7 @@ func (f *Fetcher) FetchText(ctx context.Context, rawURL string) (title, text str
 		if err != nil {
 			return "", "", err
 		}
-		req.Header.Set("User-Agent", "LexoraBot/1.0")
+		req.Header.Set("User-Agent", "MindLawBot/1.0")
 
 		resp, err := f.http.Do(req)
 		if err != nil {

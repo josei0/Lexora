@@ -1,0 +1,7 @@
+mindlaw.web.id, app.mindlaw.web.id, admin.mindlaw.web.id {
+	reverse_proxy frontend:3000
+}
+
+api.mindlaw.web.id {
+	reverse_proxy backend:8080
+}

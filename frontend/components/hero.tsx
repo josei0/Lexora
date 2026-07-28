@@ -23,7 +23,7 @@ export function Hero() {
             </h1>
 
             <p className="mt-6 text-pretty text-lg leading-relaxed text-muted-foreground">
-              Lexora adalah platform hukum cerdas yang membantu advokat meneliti
+              MindLaw adalah platform hukum cerdas yang membantu advokat meneliti
               peraturan dan putusan, menganalisis kontrak, serta menyusun dokumen
               yang solid, berdasarkan sumber yang dapat diverifikasi dan dirancang
               untuk menjaga kerahasiaan.

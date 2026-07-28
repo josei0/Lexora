@@ -25,7 +25,7 @@ func TestRateLimitAdminLoginPerIP(t *testing.T) {
 }
 
 func TestCORSPerGroup(t *testing.T) {
-	h := CORS([]string{"https://lexora.com"}, []string{"https://admin.lvh.me"})(
+	h := CORS([]string{"https://mindlaw.web.id"}, []string{"https://admin.lvh.me"})(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	// admin origin ok
@@ -42,7 +42,7 @@ func TestCORSPerGroup(t *testing.T) {
 
 	// app origin ditolak
 	req = httptest.NewRequest(http.MethodOptions, "/auth/admin/login", nil)
-	req.Header.Set("Origin", "https://lexora.com")
+	req.Header.Set("Origin", "https://mindlaw.web.id")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Header().Get("Access-Control-Allow-Origin") != "" {

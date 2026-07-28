@@ -23,7 +23,7 @@ export function SiteHeader() {
             <Scale className="h-5 w-5" aria-hidden="true" />
           </span>
           <span className="font-serif text-xl font-semibold tracking-tight text-foreground">
-            Lexora
+            MindLaw
           </span>
         </a>
 

@@ -9,7 +9,7 @@ const steps = [
     number: "02",
     title: "Tinjau jawaban terrujuk",
     description:
-      "Lexora memberi hasil berlandaskan sumber dengan tautan ke peraturan dan putusan, sehingga Anda bisa memverifikasi tiap klaim.",
+      "MindLaw memberi hasil berlandaskan sumber dengan tautan ke peraturan dan putusan, sehingga Anda bisa memverifikasi tiap klaim.",
   },
   {
     number: "03",

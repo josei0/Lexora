@@ -30,7 +30,7 @@ export function SiteFooter() {
                 <Scale className="h-5 w-5" aria-hidden="true" />
               </span>
               <span className="font-serif text-xl font-semibold tracking-tight text-foreground">
-                Lexora
+                MindLaw
               </span>
             </a>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
@@ -65,10 +65,10 @@ export function SiteFooter() {
 
         <div className="mt-14 flex flex-col items-start justify-between gap-4 border-t border-border pt-8 sm:flex-row sm:items-center">
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} Lexora. Seluruh hak cipta dilindungi.
+            &copy; {new Date().getFullYear()} MindLaw. Seluruh hak cipta dilindungi.
           </p>
           <p className="text-xs text-muted-foreground">
-            Lexora tidak memberikan nasihat hukum. Ini adalah alat bantu untuk
+            MindLaw tidak memberikan nasihat hukum. Ini adalah alat bantu untuk
             profesional hukum berlisensi.
           </p>
         </div>

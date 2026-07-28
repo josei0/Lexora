@@ -1,4 +1,4 @@
-# Lexora
+# MindLaw
 
 Platform asisten hukum berbasis AI untuk praktisi hukum Indonesia. Upload dokumen hukum (UU, PP, putusan), lalu tanya langsung — jawaban disusun dari isi dokumen dengan kutipan sumber.
 

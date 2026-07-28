@@ -115,6 +115,25 @@ export async function adminVerify(email: string, password: string, code: string)
   return tok
 }
 
+export async function adminRefresh(): Promise<Tokens> {
+  const res = await fetch(`${BASE}/auth/admin/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!res.ok) throw await parseError(res)
+  const tok: Tokens = await res.json()
+  accessToken = tok.access_token
+  return tok
+}
+
+export async function adminLogout(): Promise<void> {
+  try {
+    await fetch(`${BASE}/auth/admin/logout`, { method: 'POST', credentials: 'include' })
+  } finally {
+    accessToken = null
+  }
+}
+
 // anggota org (org_admin only)
 export type Member = {
   user_id: string

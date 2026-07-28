@@ -16,9 +16,9 @@ const playfair = Playfair_Display({
 })
 
 export const metadata: Metadata = {
-  title: 'Lexora | Kecerdasan Hukum Modern',
+  title: 'MindLaw | Kecerdasan Hukum Modern',
   description:
-    'Lexora adalah platform hukum cerdas untuk profesional hukum Indonesia, membantu advokat dan firma meneliti peraturan dan putusan, menganalisis kontrak, serta menyusun dokumen dengan presisi.',
+    'MindLaw adalah platform hukum cerdas untuk profesional hukum Indonesia, membantu advokat dan firma meneliti peraturan dan putusan, menganalisis kontrak, serta menyusun dokumen dengan presisi.',
   generator: 'v0.app',
   icons: {
     icon: [

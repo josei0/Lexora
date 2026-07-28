@@ -32,7 +32,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Masuk ke Lexora</CardTitle>
+          <CardTitle>Masuk ke MindLaw</CardTitle>
           <CardDescription>Kecerdasan hukum untuk profesional Indonesia.</CardDescription>
         </CardHeader>
         <CardContent>

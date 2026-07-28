@@ -195,7 +195,7 @@ export default function ChatPage() {
           {messages.length === 0 && !streaming ? (
             <div className="flex h-full items-center justify-center text-center">
               <div>
-                <h1 className="font-serif text-3xl">Tanya Lexora</h1>
+                <h1 className="font-serif text-3xl">Tanya MindLaw</h1>
                 <p className="mt-2 text-muted-foreground">
                   Jawaban disusun dari dokumen di pustaka pengetahuan organisasi Anda.
                 </p>

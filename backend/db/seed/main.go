@@ -41,17 +41,17 @@ func main() {
 	seedPlans(ctx, pool)
 
 	// 2. org Pro: admin (org_admin) + user pro (member)
-	proOrg := upsertOrg(ctx, pool, "Firma Hukum Lexora", "firma-lexora")
+	proOrg := upsertOrg(ctx, pool, "Firma Hukum MindLaw", "firma-mindlaw")
 	subscribe(ctx, pool, proOrg, domain.PlanPro, 5)
-	admin := upsertUser(ctx, pool, "admin@lexora.id", devPassword, "Admin Firma", domain.SystemRoleNone)
-	proUser := upsertUser(ctx, pool, "pro@lexora.id", devPassword, "User Pro", domain.SystemRoleNone)
+	admin := upsertUser(ctx, pool, "admin@mindlaw.web.id", devPassword, "Admin Firma", domain.SystemRoleNone)
+	proUser := upsertUser(ctx, pool, "pro@mindlaw.web.id", devPassword, "User Pro", domain.SystemRoleNone)
 	addMember(ctx, pool, admin, proOrg, domain.OrgRoleAdmin)
 	addMember(ctx, pool, proUser, proOrg, domain.OrgRoleMember)
 
 	// 3. org Demo: user free (org_admin biar bisa lihat dashboard free tier)
 	freeOrg := upsertOrg(ctx, pool, "Kantor Hukum Merdeka", "kantor-merdeka")
 	subscribe(ctx, pool, freeOrg, domain.PlanDemo, 1)
-	freeUser := upsertUser(ctx, pool, "free@lexora.id", devPassword, "User Free", domain.SystemRoleNone)
+	freeUser := upsertUser(ctx, pool, "free@mindlaw.web.id", devPassword, "User Free", domain.SystemRoleNone)
 	addMember(ctx, pool, freeUser, freeOrg, domain.OrgRoleAdmin)
 
 	log.Printf("seed selesai: 4 akun (superadmin, admin, pro, free)")

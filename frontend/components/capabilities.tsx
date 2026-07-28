@@ -58,7 +58,7 @@ export function Capabilities() {
             Setiap tahap pekerjaan hukum, ditangani dengan cermat.
           </h2>
           <p className="mt-4 text-pretty text-lg leading-relaxed text-muted-foreground">
-            Lexora memperkuat praktik Anda dengan alat yang dirancang khusus untuk
+            MindLaw memperkuat praktik Anda dengan alat yang dirancang khusus untuk
             tuntutan profesional hukum: akurat, terrujuk, dan rahasia.
           </p>
         </div>

@@ -65,7 +65,7 @@ export default function AdminLoginPage() {
         setLoading(false)
       } else {
         await adminVerify(email, password, code)
-        router.replace('/app/admin')
+        router.replace('/admin')
       }
     } catch (err) {
       fail(err)
@@ -76,7 +76,7 @@ export default function AdminLoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Panel Admin Lexora</CardTitle>
+          <CardTitle>Panel Admin MindLaw</CardTitle>
           <CardDescription>
             {step === 'credentials' && 'Khusus super admin. Verifikasi dua langkah wajib.'}
             {step === 'enroll' && 'Aktifkan aplikasi authenticator untuk akun ini.'}
@@ -161,7 +161,7 @@ export default function AdminLoginPage() {
               <p className="text-sm text-muted-foreground">
                 Tiap kode hanya bisa dipakai sekali, untuk masuk saat aplikasi authenticator hilang.
               </p>
-              <Button size="lg" onClick={() => router.replace('/app/admin')}>
+              <Button size="lg" onClick={() => router.replace('/admin')}>
                 Lanjut ke panel
               </Button>
             </div>

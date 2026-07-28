@@ -15,7 +15,7 @@ export function PlatformHero() {
             Satu ruang kerja cerdas untuk seluruh praktik hukum.
           </h1>
           <p className="mt-6 text-pretty text-lg leading-relaxed text-muted-foreground">
-            Lexora menyatukan riset, analisis, penyusunan, dan pengetahuan ke
+            MindLaw menyatukan riset, analisis, penyusunan, dan pengetahuan ke
             dalam satu lingkungan aman. Setiap jawaban berlandaskan sumber primer
             dan setiap tindakan tercatat dalam arsip Anda.
           </p>
