@@ -3,9 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
-import { adminLogout, adminRefresh } from '@/lib/api'
+import { adminRefresh } from '@/lib/api'
 
 // guard admin: pakai cookie admin (bukan user). Refresh proaktif tiap ~14m.
+// shell (sidebar + tab) hidup di page.tsx krn butuh state tab; layout cuma guard.
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [ok, setOk] = useState(false)
@@ -29,18 +30,5 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <span className="font-serif text-lg">Panel Admin MindLaw</span>
-        <button
-          className="text-sm text-muted-foreground hover:text-foreground"
-          onClick={() => adminLogout().then(() => router.replace('/admin-login'))}
-        >
-          Keluar
-        </button>
-      </header>
-      <main className="p-8">{children}</main>
-    </div>
-  )
+  return <div className="min-h-screen bg-background">{children}</div>
 }

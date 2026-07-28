@@ -35,6 +35,13 @@ export function currentUserId(): string {
   return (jwtClaims()?.sub as string) ?? ''
 }
 
+// nama & email dari JWT (display only). email dipakai fallback saat nama kosong.
+export function currentUser(): { name: string; email: string } {
+  const c = jwtClaims()
+  const email = (c?.email as string) ?? ''
+  return { name: (c?.name as string) || email, email }
+}
+
 export type Tokens = {
   access_token: string
   token_type: string

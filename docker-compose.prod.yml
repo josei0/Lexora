@@ -43,6 +43,9 @@ services:
         NEXT_PUBLIC_API_URL: https://api.mindlaw.web.id
     restart: unless-stopped
     env_file: .env.production
+    environment:
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
     depends_on:
       - backend
 

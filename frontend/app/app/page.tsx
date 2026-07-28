@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/app/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/lib/auth-context'
 
@@ -9,10 +10,10 @@ export default function AppHome() {
   const { mustChangePassword } = useAuth()
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-2 font-serif text-3xl">Selamat datang di MindLaw</h1>
-      <p className="mb-8 text-muted-foreground">
-        Platform kecerdasan hukum untuk profesional Indonesia.
-      </p>
+      <PageHeader
+        title="Selamat datang di MindLaw"
+        description="Platform kecerdasan hukum untuk profesional Indonesia."
+      />
 
       {mustChangePassword && (
         <Card className="mb-6 border-accent">

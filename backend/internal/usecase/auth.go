@@ -244,7 +244,7 @@ func otpauthURL(email, secret string) string {
 
 // nil = sesi baru
 func (a *Auth) issue(ctx context.Context, u *domain.User, signer *jwt.Signer, familyID uuid.UUID) (*Tokens, error) {
-	id := domain.Identity{UserID: u.ID, SystemRole: u.SystemRole}
+	id := domain.Identity{UserID: u.ID, SystemRole: u.SystemRole, Name: u.FullName, Email: u.Email}
 	if u.SystemRole != domain.SystemRoleSuperAdmin {
 		m, err := a.members.Primary(ctx, u.ID)
 		if err != nil {

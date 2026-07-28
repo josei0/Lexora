@@ -1,12 +1,14 @@
 'use client'
 
+import { CreditCard, LogOut, ScrollText, Terminal } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   ApiError,
+  adminLogout,
   api,
   assignSubscription,
   getPrompt,
@@ -18,6 +20,7 @@ import {
 } from '@/lib/api'
 
 type Org = { id: string; name: string; slug: string }
+type Tab = 'sub' | 'prompt' | 'log'
 
 const auditLabels: Record<string, string> = {
   'login.ok': 'Login berhasil',
@@ -32,7 +35,16 @@ const auditLabels: Record<string, string> = {
   'prompt.update': 'Ubah system prompt',
 }
 
+const nav: { id: Tab; label: string; desc: string; icon: typeof CreditCard }[] = [
+  { id: 'sub', label: 'Langganan', desc: 'Assign paket ke organisasi', icon: CreditCard },
+  { id: 'prompt', label: 'System Prompt', desc: 'Instruksi dasar asisten', icon: Terminal },
+  { id: 'log', label: 'Log Aktivitas', desc: 'Jejak audit terbaru', icon: ScrollText },
+]
+
 export default function AdminPage() {
+  const router = useRouter()
+  const [tab, setTab] = useState<Tab>('sub')
+
   const [orgs, setOrgs] = useState<Org[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [prompt, setPromptText] = useState('')
@@ -81,75 +93,119 @@ export default function AdminPage() {
     }
   }
 
+  const active = nav.find(n => n.id === tab)!
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="font-serif text-3xl">Admin</h1>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Assign Langganan</CardTitle></CardHeader>
-        <CardContent>
-          <form onSubmit={handleAssign} className="space-y-3">
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={selOrg} onChange={e => setSelOrg(e.target.value)} required
+    <div className="flex min-h-screen">
+      <aside className="flex w-64 flex-col border-r border-sidebar-border bg-sidebar p-4">
+        <div className="mb-8 flex items-center gap-2 px-2 pt-2">
+          <span className="font-serif text-2xl text-sidebar-foreground">MindLaw</span>
+          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">Admin</span>
+        </div>
+        <nav className="flex flex-1 flex-col gap-1">
+          {nav.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                tab === id
+                  ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent/60'
+              }`}
             >
-              <option value="">Pilih organisasi…</option>
-              {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={selPlan} onChange={e => setSelPlan(e.target.value)} required
-            >
-              <option value="">Pilih plan…</option>
-              {plans.map(p => <option key={p.id} value={p.code}>{p.name} · {p.monthly_token_limit > 0 ? `${(p.monthly_token_limit / 1000).toFixed(0)}k tok/seat` : 'unlimited'}</option>)}
-            </select>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-muted-foreground w-16">Seat</label>
-              <Input type="number" min={1} value={seats} onChange={e => setSeats(Number(e.target.value))} className="w-24" required />
-            </div>
-            {subMsg && <p className="text-xs text-primary">{subMsg}</p>}
-            <Button type="submit">Assign</Button>
-          </form>
-        </CardContent>
-      </Card>
+              <Icon className="size-4 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </nav>
+        <Button
+          variant="ghost"
+          size="lg"
+          className="justify-start"
+          onClick={() => adminLogout().then(() => router.replace('/admin-login'))}
+        >
+          <LogOut className="size-4" />
+          Keluar
+        </Button>
+      </aside>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">System Prompt</CardTitle></CardHeader>
-        <CardContent>
-          <form onSubmit={handlePrompt} className="space-y-3">
-            <textarea
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-              rows={10}
-              value={prompt}
-              onChange={e => { setPromptText(e.target.value); setPromptSaved(false) }}
-              required
-            />
-            {promptSaved && <p className="text-xs text-primary">✓ Tersimpan</p>}
-            <Button type="submit">Simpan prompt</Button>
-          </form>
-        </CardContent>
-      </Card>
+      <main className="flex-1">
+        <header className="border-b border-border px-8 py-5">
+          <h1 className="font-serif text-2xl leading-tight">{active.label}</h1>
+          <p className="text-sm text-muted-foreground">{active.desc}</p>
+        </header>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Log Aktivitas</CardTitle></CardHeader>
-        <CardContent>
-          {logs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Belum ada aktivitas.</p>
-          ) : (
-            <div className="divide-y text-sm">
-              {logs.map(l => (
-                <div key={l.id} className="flex items-center justify-between py-2">
-                  <span>{auditLabels[l.action] ?? l.action}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(l.created_at).toLocaleString('id-ID')} · {l.ip || '-'}
-                  </span>
-                </div>
-              ))}
-            </div>
+        <div className="mx-auto max-w-2xl px-8 py-8">
+          {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+
+          {tab === 'sub' && (
+            <form onSubmit={handleAssign} className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Organisasi</label>
+                <select
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                  value={selOrg} onChange={e => setSelOrg(e.target.value)} required
+                >
+                  <option value="">Pilih organisasi…</option>
+                  {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Paket</label>
+                <select
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                  value={selPlan} onChange={e => setSelPlan(e.target.value)} required
+                >
+                  <option value="">Pilih plan…</option>
+                  {plans.map(p => <option key={p.id} value={p.code}>{p.name} · {p.monthly_token_limit > 0 ? `${(p.monthly_token_limit / 1000).toFixed(0)}k tok/seat` : 'unlimited'}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Jumlah seat</label>
+                <Input type="number" min={1} value={seats} onChange={e => setSeats(Number(e.target.value))} className="w-32" required />
+              </div>
+              {subMsg && <p className="text-sm text-primary">{subMsg}</p>}
+              <Button type="submit">Assign langganan</Button>
+            </form>
           )}
-        </CardContent>
-      </Card>
+
+          {tab === 'prompt' && (
+            <form onSubmit={handlePrompt} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Instruksi ini disisipkan ke setiap percakapan asisten di seluruh organisasi.
+              </p>
+              <textarea
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm leading-relaxed"
+                rows={14}
+                value={prompt}
+                onChange={e => { setPromptText(e.target.value); setPromptSaved(false) }}
+                required
+              />
+              <div className="flex items-center gap-3">
+                <Button type="submit">Simpan prompt</Button>
+                {promptSaved && <p className="text-sm text-primary">✓ Tersimpan</p>}
+              </div>
+            </form>
+          )}
+
+          {tab === 'log' && (
+            logs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada aktivitas.</p>
+            ) : (
+              <div className="divide-y divide-border rounded-lg border border-border">
+                {logs.map(l => (
+                  <div key={l.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                    <span>{auditLabels[l.action] ?? l.action}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(l.created_at).toLocaleString('id-ID')} · {l.ip || '-'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
+      </main>
     </div>
   )
 }

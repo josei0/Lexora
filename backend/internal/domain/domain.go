@@ -93,6 +93,8 @@ type Identity struct {
 	OrgID      uuid.UUID // zero for super admin
 	SystemRole string
 	OrgRole    string
+	Name       string // display only (JWT claim), bukan untuk otorisasi
+	Email      string // display only
 }
 
 func (i Identity) IsSuperAdmin() bool { return i.SystemRole == SystemRoleSuperAdmin }

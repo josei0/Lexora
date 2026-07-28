@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { PageHeader } from '@/components/app/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ApiError, listDocuments, uploadDocument, type Document } from '@/lib/api'
@@ -67,31 +68,31 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="font-serif text-3xl">Pustaka Pengetahuan</h1>
-          <p className="text-muted-foreground">
-            {canUpload
-              ? 'Unggah dokumen hukum (PDF, DOCX, TXT, maks 20MB). PDF harus versi teks; hasil scan belum didukung.'
-              : 'Dokumen di pustaka pengetahuan organisasi Anda. Hanya admin organisasi yang bisa mengunggah.'}
-          </p>
-        </div>
-        {canUpload && (
-          <div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".pdf,.docx,.txt"
-              onChange={onFile}
-              className="hidden"
-              id="doc-upload"
-            />
-            <Button size="lg" disabled={uploading} onClick={() => inputRef.current?.click()}>
-              {uploading ? 'Mengunggah…' : 'Unggah dokumen'}
-            </Button>
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title="Pustaka Pengetahuan"
+        description={
+          canUpload
+            ? 'Unggah dokumen hukum (PDF, DOCX, TXT, maks 20MB). PDF harus versi teks; hasil scan belum didukung.'
+            : 'Dokumen di pustaka pengetahuan organisasi Anda. Hanya admin organisasi yang bisa mengunggah.'
+        }
+        action={
+          canUpload && (
+            <>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                onChange={onFile}
+                className="hidden"
+                id="doc-upload"
+              />
+              <Button size="lg" disabled={uploading} onClick={() => inputRef.current?.click()}>
+                {uploading ? 'Mengunggah…' : 'Unggah dokumen'}
+              </Button>
+            </>
+          )
+        }
+      />
 
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 

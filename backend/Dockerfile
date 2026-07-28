@@ -5,6 +5,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /server ./cmd/server
 RUN CGO_ENABLED=0 go build -o /seed ./db/seed
+RUN CGO_ENABLED=0 go build -o /usertool ./cmd/usertool
 
 # migrate CLI
 RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
@@ -16,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=builder /server .
 COPY --from=builder /seed .
+COPY --from=builder /usertool .
 COPY --from=builder /go/bin/migrate .
 COPY db/migrations ./migrations
 EXPOSE 8080

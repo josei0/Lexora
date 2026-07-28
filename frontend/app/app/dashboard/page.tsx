@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { PageHeader } from '@/components/app/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ApiError, getDashboard, getQuota, tierLabel, type DashboardStats, type Quota } from '@/lib/api'
 
@@ -34,7 +35,7 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-6 font-serif text-3xl">Dashboard</h1>
+      <PageHeader title="Dashboard" description="Ringkasan pemakaian dan aktivitas organisasi Anda." />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard title="Kualitas AI" value={tierLabel(quota?.tier)} />

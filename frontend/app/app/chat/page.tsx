@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   ApiError,
   askStream,
@@ -82,8 +81,8 @@ export default function ChatPage() {
     }
   }
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault()
+  async function send(e?: React.FormEvent) {
+    e?.preventDefault()
     const question = input.trim()
     if ((!question && files.length === 0) || busy) return
 
@@ -250,7 +249,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        <form onSubmit={send} className="mt-4 flex gap-2">
+        <form onSubmit={send} className="mt-4 flex items-end gap-2">
           <input
             ref={fileRef}
             type="file"
@@ -289,11 +288,20 @@ export default function ChatPage() {
           >
             <Globe className="size-4" />
           </Button>
-          <Input
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Tulis pertanyaan hukum…"
+            onKeyDown={(e) => {
+              // Enter kirim, Shift+Enter baris baru
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+            rows={1}
+            placeholder="Tulis pertanyaan hukum… (Shift+Enter untuk baris baru)"
             disabled={busy}
+            className="flex max-h-40 min-h-9 flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
           />
           <Button type="submit" disabled={busy || (!input.trim() && files.length === 0)}>
             {busy ? 'Menjawab…' : 'Kirim'}

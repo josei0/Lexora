@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { PageHeader } from '@/components/app/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -40,7 +41,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
-      <h1 className="font-serif text-3xl">Pengaturan</h1>
+      <PageHeader title="Pengaturan" description="Kelola akun dan keamanan Anda." />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Ganti kata sandi</CardTitle></CardHeader>

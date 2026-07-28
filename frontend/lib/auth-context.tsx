@@ -9,6 +9,7 @@ type Status = 'loading' | 'authed' | 'anon'
 type AuthState = {
   status: Status
   role: apiClient.Role | null
+  user: { name: string; email: string } | null
   mustChangePassword: boolean
   login: (email: string, password: string) => Promise<apiClient.Tokens>
   logout: () => Promise<void>
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('loading')
   const [role, setRole] = useState<apiClient.Role | null>(null)
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
   const [mustChangePassword, setMustChangePassword] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -34,10 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const tok = await apiClient.refresh()
       setRole(apiClient.currentRole())
+      setUser(apiClient.currentUser())
       setStatus('authed')
       scheduleRefresh(tok.expires_in)
     } catch {
       setRole(null)
+      setUser(null)
       setStatus('anon')
     }
   }, [scheduleRefresh])
@@ -54,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const tok = await apiClient.login(email, password)
       setMustChangePassword(!!tok.must_change_password)
       setRole(apiClient.currentRole())
+      setUser(apiClient.currentUser())
       setStatus('authed')
       scheduleRefresh(tok.expires_in)
       return tok
@@ -65,13 +70,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (timer.current) clearTimeout(timer.current)
     await apiClient.logout()
     setRole(null)
+    setUser(null)
     setStatus('anon')
     setMustChangePassword(false)
   }, [])
 
   return (
     <AuthContext.Provider
-      value={{ status, role, mustChangePassword, login, logout, setMustChangePassword }}
+      value={{ status, role, user, mustChangePassword, login, logout, setMustChangePassword }}
     >
       {children}
     </AuthContext.Provider>

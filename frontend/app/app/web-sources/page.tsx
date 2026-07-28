@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { PageHeader } from '@/components/app/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -85,13 +86,10 @@ export default function WebSourcesPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="font-serif text-3xl">Cari sumber web</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cari peraturan di situs hukum resmi, tinjau isinya, lalu tambahkan ke pustaka agar bisa
-          dirujuk saat menjawab.
-        </p>
-      </div>
+      <PageHeader
+        title="Cari sumber web"
+        description="Cari peraturan di situs hukum resmi, tinjau isinya, lalu tambahkan ke pustaka agar bisa dirujuk saat menjawab."
+      />
 
       <form onSubmit={onSearch} className="flex gap-3">
         <Input

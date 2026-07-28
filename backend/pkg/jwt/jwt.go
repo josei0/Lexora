@@ -28,6 +28,8 @@ type claims struct {
 	OrgID      string `json:"org_id,omitempty"`
 	SystemRole string `json:"sys_role"`
 	OrgRole    string `json:"org_role,omitempty"`
+	Name       string `json:"name,omitempty"`  // display only
+	Email      string `json:"email,omitempty"` // display only
 	jwt.RegisteredClaims
 }
 
@@ -38,6 +40,8 @@ func (s *Signer) Sign(id domain.Identity) (string, error) {
 	c := claims{
 		SystemRole: id.SystemRole,
 		OrgRole:    id.OrgRole,
+		Name:       id.Name,
+		Email:      id.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   id.UserID.String(),
 			Issuer:    issuer,

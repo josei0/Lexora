@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { PageHeader } from '@/components/app/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ApiError,
@@ -71,7 +72,7 @@ export default function BillingPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-6 font-serif text-3xl">Tagihan</h1>
+      <PageHeader title="Tagihan" description="Kelola kuota dan lihat riwayat pembayaran." />
 
       {err && <p className="mb-4 text-sm text-destructive">{err}</p>}
 

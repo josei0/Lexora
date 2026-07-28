@@ -118,6 +118,7 @@ make tidy         # go mod tidy
 ```
 backend/
   cmd/server/         entrypoint
+  cmd/usertool/       CLI CRUD akun (dipakai make user-*)
   config/             konfigurasi dari env
   db/migrations/      file SQL migrasi
   db/seed/            seed super admin + plans
@@ -136,9 +137,49 @@ frontend/
 
 ---
 
-## Catatan deployment
+## Deploy Produksi
 
-- Ganti `JWT_SECRET` dengan nilai acak yang kuat sebelum deploy.
-- Set `COOKIE_SECURE=true` jika menggunakan HTTPS.
-- Isi `CORS_ORIGINS` dengan domain frontend produksi.
-- Model chat dan embedding di-set lewat `.env` (`CHAT_MODEL`, `EMBEDDING_MODEL`). Tidak semua model di Maia Router aktif; sesuaikan dengan katalog yang tersedia.
+Produksi jalan di VPS (`103.193.179.9`, domain `mindlaw.web.id`) sebagai stack Docker: Postgres, Qdrant, backend Go, frontend Next.js, dan Caddy (reverse proxy + HTTPS otomatis). Semua dikendalikan lewat `Makefile` di root dari laptop, via SSH key `~/.ssh/mindlaw_deploy`.
+
+> Kredensial lengkap (server, akun, DB, API key) ada di [`credential.md`](credential.md).
+
+### Deploy
+
+```bash
+make deploy            # sync kode + build + migrate + seed + up (full, aman diulang)
+make deploy-backend    # rebuild + restart backend saja (cepat)
+make deploy-frontend   # rebuild + restart frontend saja
+```
+
+`make deploy` mengirim kode via `tar` over SSH ke `/root/lexora`, lalu menjalankan `deploy.sh` (idempotent: migrate → seed → up). File secret (`.env`, `.env.production`, dll.) **tidak** ikut ter-sync, jadi konfigurasi di server tidak tertimpa.
+
+### Operasional
+
+```bash
+make ps                # status container
+make logs S=backend    # ikuti log (S kosong = semua service)
+make restart S=frontend
+make shell             # SSH masuk ke server
+make help              # daftar lengkap perintah
+```
+
+### CRUD akun (dari laptop, tanpa masuk server)
+
+```bash
+make user-list
+make user-create EMAIL=a@b.com PASS=xxx NAME="Nama" [ROLE=none|super_admin]
+make user-passwd EMAIL=a@b.com PASS=baru
+make user-activate EMAIL=a@b.com
+make user-deactivate EMAIL=a@b.com
+make user-delete EMAIL=a@b.com
+```
+
+Perintah `user-*` menjalankan `backend/cmd/usertool` di dalam container backend, langsung ke database produksi.
+
+### Checklist sebelum deploy pertama
+
+- `JWT_SECRET` & `JWT_ADMIN_SECRET` diisi nilai acak kuat (bukan nilai dev).
+- `COOKIE_SECURE=true` (wajib di HTTPS; kalau `false`, login prod gagal diam-diam).
+- `CORS_ORIGINS_APP` / `CORS_ORIGINS_ADMIN` diisi domain frontend produksi (tanpa wildcard).
+- Model chat & embedding sesuai katalog Maia Router yang aktif.
+- DNS `mindlaw.web.id` + subdomain `app.` `admin.` `api.` mengarah ke IP server.

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { PageHeader } from '@/components/app/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -67,14 +68,17 @@ export default function MembersPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-3xl">Anggota</h1>
-        {sub && (
-          <p className="text-sm text-muted-foreground">
-            {activeCount} dari {sub.seats} seat terpakai
-          </p>
-        )}
-      </div>
+      <PageHeader
+        title="Anggota"
+        description="Kelola anggota organisasi dan perannya."
+        action={
+          sub && (
+            <p className="text-sm text-muted-foreground">
+              {activeCount} dari {sub.seats} seat terpakai
+            </p>
+          )
+        }
+      />
 
       <Card>
         <CardHeader>
