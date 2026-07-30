@@ -38,18 +38,14 @@ func originSet(origins []string) map[string]bool {
 	return set
 }
 
-// CORS per-grup
-// ponytail: seleksi by path, host-check nyusul D2
+// CORS: dua origin first-party (app + admin), keduanya boleh semua path.
+// Bukan security boundary - otorisasi via JWT audience + role check.
 func CORS(app, admin []string) func(http.Handler) http.Handler {
-	appSet, adminSet := originSet(app), originSet(admin)
+	allowed := originSet(append(append([]string{}, app...), admin...))
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			set := appSet
-			if strings.HasPrefix(r.URL.Path, "/auth/admin/") {
-				set = adminSet
-			}
 			origin := r.Header.Get("Origin")
-			if origin != "" && set[origin] {
+			if origin != "" && allowed[origin] {
 				h := w.Header()
 				h.Set("Access-Control-Allow-Origin", origin)
 				h.Set("Access-Control-Allow-Credentials", "true")
@@ -129,7 +125,8 @@ func RateLimitLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
 		if (strings.HasSuffix(p, "/auth/login") || strings.HasSuffix(p, "/auth/admin/login") ||
-			strings.HasSuffix(p, "/auth/admin/enroll") || strings.HasSuffix(p, "/auth/admin/verify")) && !l.allow(clientIP(r)) {
+			strings.HasSuffix(p, "/auth/admin/enroll") || strings.HasSuffix(p, "/auth/admin/verify") ||
+			strings.HasSuffix(p, "/auth/register") || strings.HasSuffix(p, "/auth/google")) && !l.allow(clientIP(r)) {
 			writeError(w, http.StatusTooManyRequests, "rate_limited", "terlalu banyak percobaan, coba lagi nanti")
 			return
 		}

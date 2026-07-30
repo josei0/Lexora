@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"net/url"
 	"testing"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/lexora/backend/internal/domain"
 	"github.com/lexora/backend/pkg/hash"
 	"github.com/lexora/backend/pkg/jwt"
-	"github.com/pquerna/otp/totp"
 )
 
 type fakeRefresh struct{ m map[string]*domain.RefreshToken }
@@ -92,37 +90,6 @@ func mkUser(email, pw, role string) *domain.User {
 	return &domain.User{ID: uuid.New(), Email: email, PasswordHash: h, SystemRole: role, IsActive: true}
 }
 
-// jalankan enrollment penuh, balikin token + recovery codes
-func enrollAdmin(t *testing.T, uc *Auth, email, pw string) *AdminStep {
-	t.Helper()
-	ctx := context.Background()
-	step, err := uc.AdminLogin(ctx, email, pw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !step.EnrollRequired || step.Tokens != nil {
-		t.Fatalf("login pertama harus paksa enroll tanpa token, got %+v", step)
-	}
-	code := totpCode(t, step.OTPAuthURL, time.Now())
-	done, err := uc.AdminEnroll(ctx, email, pw, code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return done
-}
-
-func totpCode(t *testing.T, otpauth string, at time.Time) string {
-	t.Helper()
-	u, err := url.Parse(otpauth)
-	if err != nil {
-		t.Fatal(err)
-	}
-	code, err := totp.GenerateCode(u.Query().Get("secret"), at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return code
-}
 
 // B11: reject super_admin di app
 func TestAppLoginRejectsSuperAdmin(t *testing.T) {
@@ -143,79 +110,6 @@ func TestAdminLoginRejectsNonSuperAdmin(t *testing.T) {
 }
 
 // U18: tanpa enrollment tak ada token; setelah enroll, login = 2 langkah
-func TestAdminEnrollmentForced(t *testing.T) {
-	su := mkUser("super@x", "pw12345678", domain.SystemRoleSuperAdmin)
-	uc, _, _ := newAuthUC(&fakeUsers{m: map[uuid.UUID]*domain.User{su.ID: su}})
-	ctx := context.Background()
-
-	// verify sebelum enroll -> tolak
-	if _, err := uc.AdminVerify(ctx, "super@x", "pw12345678", "000000"); err != domain.ErrInvalidCreds {
-		t.Fatalf("verify sebelum enroll harus ditolak, got %v", err)
-	}
-
-	done := enrollAdmin(t, uc, "super@x", "pw12345678")
-	if done.Tokens == nil || done.Tokens.Access == "" {
-		t.Fatal("enroll sukses harus terbitkan token")
-	}
-	if len(done.RecoveryCodes) != 8 {
-		t.Fatalf("harus 8 recovery codes, got %d", len(done.RecoveryCodes))
-	}
-
-	// login berikutnya: bukan enroll lagi, tapi minta MFA, tetap tanpa token
-	step, err := uc.AdminLogin(ctx, "super@x", "pw12345678")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !step.MFARequired || step.EnrollRequired || step.Tokens != nil {
-		t.Fatalf("setelah enroll, login harus MFARequired tanpa token, got %+v", step)
-	}
-}
-
-// U19 (T19): kode TOTP sekali pakai dalam window-nya
-func TestTOTPReplayRejected(t *testing.T) {
-	su := mkUser("super@x", "pw12345678", domain.SystemRoleSuperAdmin)
-	users := &fakeUsers{m: map[uuid.UUID]*domain.User{su.ID: su}}
-	uc, _, _ := newAuthUC(users)
-	ctx := context.Background()
-
-	step, err := uc.AdminLogin(ctx, "super@x", "pw12345678")
-	if err != nil {
-		t.Fatal(err)
-	}
-	code := totpCode(t, step.OTPAuthURL, time.Now())
-	if _, err := uc.AdminEnroll(ctx, "super@x", "pw12345678", code); err != nil {
-		t.Fatal(err)
-	}
-
-	// replay kode yang sama (step sudah terpakai saat enroll) -> tolak
-	if _, err := uc.AdminVerify(ctx, "super@x", "pw12345678", code); err != domain.ErrInvalidCreds {
-		t.Fatalf("replay kode dalam window harus ditolak, got %v", err)
-	}
-
-	// kode step berikutnya (toleransi skew +1) -> sah
-	next := totpCode(t, step.OTPAuthURL, time.Now().Add(30*time.Second))
-	if _, err := uc.AdminVerify(ctx, "super@x", "pw12345678", next); err != nil {
-		t.Fatalf("kode step berikutnya harus sah, got %v", err)
-	}
-}
-
-// recovery code: jalur alternatif, sekali pakai
-func TestRecoveryCodeSingleUse(t *testing.T) {
-	su := mkUser("super@x", "pw12345678", domain.SystemRoleSuperAdmin)
-	uc, _, _ := newAuthUC(&fakeUsers{m: map[uuid.UUID]*domain.User{su.ID: su}})
-	ctx := context.Background()
-
-	done := enrollAdmin(t, uc, "super@x", "pw12345678")
-	rc := done.RecoveryCodes[0]
-
-	if _, err := uc.AdminVerify(ctx, "super@x", "pw12345678", rc); err != nil {
-		t.Fatalf("recovery code harus sah, got %v", err)
-	}
-	if _, err := uc.AdminVerify(ctx, "super@x", "pw12345678", rc); err != domain.ErrInvalidCreds {
-		t.Fatalf("recovery code bekas harus ditolak, got %v", err)
-	}
-}
-
 // U20: member dinonaktifkan tidak bisa login
 func TestInactiveUserCannotLogin(t *testing.T) {
 	u := mkUser("m@x", "pw12345678", domain.SystemRoleNone)
@@ -231,11 +125,18 @@ func TestInactiveUserCannotLogin(t *testing.T) {
 	}
 }
 
-// token admin: aud terpisah
+// token admin: aud terpisah (TOTP dibuang - AdminLogin langsung terbitkan token)
 func TestAdminLoginIssuesAdminAudience(t *testing.T) {
 	su := mkUser("super@x", "pw12345678", domain.SystemRoleSuperAdmin)
 	uc, appS, adminS := newAuthUC(&fakeUsers{m: map[uuid.UUID]*domain.User{su.ID: su}})
-	tok := enrollAdmin(t, uc, "super@x", "pw12345678").Tokens
+	step, err := uc.AdminLogin(context.Background(), "super@x", "pw12345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := step.Tokens
+	if tok == nil {
+		t.Fatal("AdminLogin harus langsung terbitkan token (TOTP dibuang)")
+	}
 	if _, err := adminS.Verify(tok.Access); err != nil {
 		t.Fatalf("token admin harus lolos verifier admin: %v", err)
 	}
@@ -250,7 +151,11 @@ func TestRefreshReuseRevokesFamily(t *testing.T) {
 	uc, _, _ := newAuthUC(&fakeUsers{m: map[uuid.UUID]*domain.User{su.ID: su}})
 	ctx := context.Background()
 
-	tok1 := enrollAdmin(t, uc, "s@x", "pw12345678").Tokens
+	step, err := uc.AdminLogin(ctx, "s@x", "pw12345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok1 := step.Tokens
 	tok2, err := uc.AdminRefresh(ctx, tok1.Refresh) // rotasi: tok1 revoked, tok2 hidup
 	if err != nil {
 		t.Fatal(err)

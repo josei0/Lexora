@@ -42,11 +42,18 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<Invoice[] | null>(null)
   const [err, setErr] = useState('')
   const [buying, setBuying] = useState('')
+  const [justPaid, setJustPaid] = useState(false)
 
   useEffect(() => {
     listInvoices()
       .then(setInvoices)
       .catch(e => setErr(e instanceof ApiError ? e.message : 'gagal memuat tagihan'))
+    // redirect balik dari Xendit (?paid=1): konfirmasi + bersihkan query.
+    // listInvoices() di atas sudah refresh status; SubscriptionBanner refresh quota per-navigasi.
+    if (new URLSearchParams(window.location.search).get('paid') === '1') {
+      setJustPaid(true)
+      window.history.replaceState(null, '', '/app/billing')
+    }
   }, [])
 
   async function onTopup(code: 'small' | 'large') {
@@ -54,6 +61,10 @@ export default function BillingPage() {
     setErr('')
     try {
       const inv = await createTopup(code)
+      if (inv.checkout_url) {
+        window.location.href = inv.checkout_url // gateway aktif -> ke halaman bayar
+        return
+      }
       setInvoices(prev => (prev ? [inv, ...prev] : [inv]))
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'gagal membuat top-up')
@@ -73,6 +84,12 @@ export default function BillingPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Tagihan" description="Kelola kuota dan lihat riwayat pembayaran." />
+
+      {justPaid && (
+        <div className="mb-4 rounded-lg border border-green-600/30 bg-green-600/5 p-4 text-sm text-green-700">
+          ✓ Pembayaran diterima. Kuota Anda diperbarui.
+        </div>
+      )}
 
       {err && <p className="mb-4 text-sm text-destructive">{err}</p>}
 
@@ -120,6 +137,7 @@ export default function BillingPage() {
                   <th className="px-4 py-2 font-medium">Jumlah</th>
                   <th className="px-4 py-2 font-medium">Status</th>
                   <th className="px-4 py-2 font-medium">Dibuat</th>
+                  <th className="px-4 py-2 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -135,6 +153,16 @@ export default function BillingPage() {
                       {STATUS_LABEL[inv.status] ?? inv.status}
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">{fmtDate(inv.created_at)}</td>
+                    <td className="px-4 py-2">
+                      {inv.status === 'pending' && inv.checkout_url && (
+                        <a
+                          href={inv.checkout_url}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Lanjutkan bayar
+                        </a>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

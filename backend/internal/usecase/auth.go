@@ -18,6 +18,24 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
+// GoogleVerifier: verifikasi ID token Google -> klaim identitas. Impl di pkg/oauth.
+type GoogleVerifier interface {
+	Verify(ctx context.Context, idToken string) (*GoogleClaims, error)
+	Enabled() bool
+}
+
+// GoogleClaims: subset klaim yang kita pakai (dependency inversion, tak bocorkan pkg/oauth).
+type GoogleClaims struct {
+	Sub   string
+	Email string
+	Name  string
+}
+
+// googleRegistrar: jalur auto-register (dipenuhi *Organization).
+type googleRegistrar interface {
+	Register(ctx context.Context, firmaName, adminName, email, password string, skipVerify bool, googleSub *string) (*domain.User, error)
+}
+
 type Auth struct {
 	users       domain.UserRepository
 	members     domain.MembershipRepository
@@ -27,10 +45,20 @@ type Auth struct {
 	adminSigner *jwt.Signer // token admin (aud=admin, kunci terpisah)
 	refreshTTL  time.Duration
 	loginLimit  *acctLimiter
+
+	google    GoogleVerifier  // nil = login Google mati
+	registrar googleRegistrar // nil = auto-register mati
 }
 
+// SetGoogle: aktifkan login/register via Google.
+func (a *Auth) SetGoogle(v GoogleVerifier, r googleRegistrar) { a.google, a.registrar = v, r }
+
 func NewAuth(u domain.UserRepository, m domain.MembershipRepository, r domain.RefreshTokenRepository, rec domain.RecoveryCodeRepository, s, admin *jwt.Signer, refreshTTL time.Duration) *Auth {
-	return &Auth{u, m, r, rec, s, admin, refreshTTL, newAcctLimiter(10, time.Minute)}
+	return &Auth{
+		users: u, members: m, refresh: r, recovery: rec,
+		signer: s, adminSigner: admin, refreshTTL: refreshTTL,
+		loginLimit: newAcctLimiter(10, time.Minute),
+	}
 }
 
 type Tokens struct {
@@ -66,6 +94,58 @@ func (a *Auth) Login(ctx context.Context, email, password string) (*Tokens, erro
 	return a.issue(ctx, u, a.signer, uuid.Nil)
 }
 
+// LoginGoogle: verifikasi ID token -> 3 cabang (u6 §5.3):
+//  1. email+google_sub cocok  -> login
+//  2. email belum ada          -> auto-register (aktif langsung, nama firma = nama orang)
+//  3. email ada, google_sub nil -> ErrGoogleUnlinked (pakai login password)
+func (a *Auth) LoginGoogle(ctx context.Context, idToken string) (*Tokens, error) {
+	if a.google == nil || !a.google.Enabled() || a.registrar == nil {
+		return nil, domain.ErrInvalidToken
+	}
+	claims, err := a.google.Verify(ctx, idToken)
+	if err != nil {
+		return nil, domain.ErrInvalidToken
+	}
+
+	u, err := a.users.ByEmail(ctx, claims.Email)
+	if err == nil {
+		// email sudah ada: hanya boleh lanjut kalau sudah ter-link Google
+		if u.GoogleSub == nil || *u.GoogleSub != claims.Sub {
+			return nil, domain.ErrGoogleUnlinked
+		}
+		if !u.IsActive {
+			return nil, domain.ErrInactive
+		}
+		return a.issue(ctx, u, a.signer, uuid.Nil)
+	}
+	if err != domain.ErrNotFound {
+		return nil, err
+	}
+
+	// email belum ada -> auto-register. Password acak tak terpakai (login via Google).
+	firma := firmaFromGoogle(claims.Name, claims.Email)
+	rndPw, err := randToken()
+	if err != nil {
+		return nil, err
+	}
+	created, err := a.registrar.Register(ctx, firma, claims.Name, claims.Email, rndPw, true, &claims.Sub)
+	if err != nil {
+		return nil, err
+	}
+	return a.issue(ctx, created, a.signer, uuid.Nil)
+}
+
+// nama firma dari akun Google: pakai nama orang; fallback bagian lokal email.
+func firmaFromGoogle(name, email string) string {
+	if n := strings.TrimSpace(name); n != "" {
+		return n
+	}
+	if i := strings.IndexByte(email, '@'); i > 0 {
+		return email[:i]
+	}
+	return email
+}
+
 // hasil langkah login admin; Tokens terisi hanya saat 2FA lolos
 type AdminStep struct {
 	Tokens         *Tokens
@@ -97,16 +177,17 @@ func (a *Auth) adminUser(ctx context.Context, email, password string) (*domain.U
 	return u, nil
 }
 
-// langkah 1: password. Tidak pernah menerbitkan token (2FA wajib - update2 keputusan #5)
+// langkah 1: password. TOTP dinonaktifkan - langsung terbitkan token
 func (a *Auth) AdminLogin(ctx context.Context, email, password string) (*AdminStep, error) {
 	u, err := a.adminUser(ctx, email, password)
 	if err != nil {
 		return nil, err
 	}
-	if u.TOTPConfirmedAt == nil {
-		return a.beginEnroll(ctx, u)
+	tok, err := a.issue(ctx, u, a.adminSigner, uuid.Nil)
+	if err != nil {
+		return nil, err
 	}
-	return &AdminStep{MFARequired: true}, nil
+	return &AdminStep{Tokens: tok}, nil
 }
 
 // enrollment paksa: secret dipertahankan antar-percobaan biar QR stabil

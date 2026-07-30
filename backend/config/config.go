@@ -39,6 +39,22 @@ type Config struct {
 
 	SuperAdminEmail    string
 	SuperAdminPassword string
+
+	// mailer (Gmail SMTP + App Password). Kosong = no-op (dev).
+	SMTPUser        string
+	SMTPAppPassword string
+
+	AppBaseURL     string // untuk link verifikasi email register
+	GoogleClientID string // verifikasi aud ID token Google. Kosong = login Google mati.
+
+	// alert saldo Maia (update6 §4). Threshold 0 = ticker mati.
+	MaiaBalanceThreshold float64 // USD; alert kalau estimasi saldo di bawah ini
+	MaiaTopupTotalUSD    float64 // total top-up manual Maia (basis estimasi)
+
+	// Xendit (update6 §A). Secret kosong = mode manual (tak buat checkout).
+	XenditSecretKey     string
+	XenditCallbackToken string // verifikasi webhook (Fase 18)
+	XenditSuccessURL    string // redirect setelah bayar
 }
 
 func Load() (*Config, error) {
@@ -57,6 +73,10 @@ func Load() (*Config, error) {
 		StorageDir:         env("STORAGE_DIR", "./storage"),
 		SuperAdminEmail:    env("SUPERADMIN_EMAIL", "admin@mindlaw.web.id"),
 		SuperAdminPassword: env("SUPERADMIN_PASSWORD", ""),
+		SMTPUser:           env("SMTP_USER", ""),
+		SMTPAppPassword:    env("SMTP_APP_PASSWORD", ""),
+		AppBaseURL:         env("APP_BASE_URL", "http://localhost:3000"),
+		GoogleClientID:     env("GOOGLE_CLIENT_ID", ""),
 	}
 
 	c.JWTAccessTTL = envDuration("JWT_ACCESS_TTL", 15*time.Minute)
@@ -69,6 +89,11 @@ func Load() (*Config, error) {
 	c.CORSOriginsApp = splitCSV(env("CORS_ORIGINS_APP", "http://localhost:3000"))
 	c.CORSOriginsAdmin = splitCSV(env("CORS_ORIGINS_ADMIN", "https://admin.lvh.me"))
 	c.CookieSecure = env("COOKIE_SECURE", "false") == "true"
+	c.MaiaBalanceThreshold = envFloat("MAIA_BALANCE_THRESHOLD", 0)
+	c.MaiaTopupTotalUSD = envFloat("MAIA_TOPUP_TOTAL_USD", 0)
+	c.XenditSecretKey = env("XENDIT_SECRET_KEY", "")
+	c.XenditCallbackToken = env("XENDIT_CALLBACK_TOKEN", "")
+	c.XenditSuccessURL = env("XENDIT_SUCCESS_URL", "")
 
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL required")
@@ -113,6 +138,16 @@ func envInt(key string, def int) int {
 		var n int
 		if _, err := fmt.Sscanf(v, "%d", &n); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func envFloat(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		var f float64
+		if _, err := fmt.Sscanf(v, "%g", &f); err == nil {
+			return f
 		}
 	}
 	return def

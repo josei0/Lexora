@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -18,9 +19,49 @@ import (
 	"github.com/lexora/backend/pkg/extract"
 	"github.com/lexora/backend/pkg/jwt"
 	"github.com/lexora/backend/pkg/llm"
+	"github.com/lexora/backend/pkg/mailer"
+	"github.com/lexora/backend/pkg/oauth"
+	"github.com/lexora/backend/pkg/payment"
 	"github.com/lexora/backend/pkg/storage"
 	"github.com/lexora/backend/pkg/websearch"
 )
+
+// adapter: pkg/oauth.Google -> usecase.GoogleVerifier (translate tipe Claims).
+type googleVerifier struct{ g *oauth.Google }
+
+func (v googleVerifier) Enabled() bool { return v.g.Enabled() }
+func (v googleVerifier) Verify(ctx context.Context, idToken string) (*usecase.GoogleClaims, error) {
+	c, err := v.g.Verify(ctx, idToken)
+	if err != nil {
+		return nil, err
+	}
+	return &usecase.GoogleClaims{Sub: c.Sub, Email: c.Email, Name: c.Name}, nil
+}
+
+// maiaBalanceWatch: goroutine TERPISAH (interval beda dari dailyJobs 24 jam).
+// Cek estimasi saldo Maia tiap 6 jam, email alert kalau di bawah threshold (update6 §4.3).
+// ponytail: kirim tiap tick selama di bawah threshold (bisa 4 email/hari). Tambah
+// throttle "1x per turun-lewat-threshold" kalau inbox jadi berisik.
+func maiaBalanceWatch(ctx context.Context, est *usecase.BalanceEstimator, m *mailer.Mailer, threshold float64) {
+	t := time.NewTicker(6 * time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			bal, err := est.Estimate(ctx)
+			if err != nil {
+				log.Printf("estimasi saldo maia gagal: %v", err)
+				continue
+			}
+			if bal < threshold {
+				_ = m.Send("mindlaw.env@gmail.com", "⚠️ Saldo Maia menipis",
+					fmt.Sprintf("Estimasi saldo Maia $%.2f di bawah ambang $%.2f. Top-up manual di dashboard Maia.", bal, threshold))
+			}
+		}
+	}
+}
 
 // ticker harian: terbitkan invoice renewal H-7 + retensi web_searches 90 hari.
 // Satu ticker untuk semua job harian (update5 §8). Recovery: jalan sekali saat start.
@@ -115,6 +156,9 @@ func main() {
 	topupRepo := postgres.NewTopupRepo(pool)
 	billingUC.SetTopup(topupRepo)
 	invoiceUC.SetTopup(subRepo, topupRepo)
+	if cfg.XenditSecretKey != "" { // kosong = mode manual lama
+		invoiceUC.SetGateway(payment.NewXendit(cfg.XenditSecretKey, cfg.XenditSuccessURL))
+	}
 	ragUC.SetBilling(billingUC)
 	ragUC.SetWebSearch(searchProvider, searchRepo)
 	docUC.SetBilling(billingUC)
@@ -123,7 +167,16 @@ func main() {
 	go dailyJobs(ctx, invoiceUC, searchRepo)
 	ragUC.SetPrompts(promptRepo)
 	ragUC.SetExtractor(extract.New(false)) // lampiran chat sinkron: tanpa OCR
+	mail := mailer.New(cfg.SMTPUser, cfg.SMTPAppPassword)
 	orgUC.SetSeatGuard(subUC)
+	orgUC.SetMailer(mail, cfg.AppBaseURL)
+	authUC.SetGoogle(googleVerifier{oauth.NewGoogle(cfg.GoogleClientID)}, orgUC)
+
+	// alert saldo Maia: aktif kalau threshold di-set (update6 §4.3)
+	if cfg.MaiaBalanceThreshold > 0 {
+		est := usecase.NewBalanceEstimator(usageRepo, cfg.MaiaTopupTotalUSD)
+		go maiaBalanceWatch(ctx, est, mail, cfg.MaiaBalanceThreshold)
+	}
 
 	auditRepo := postgres.NewAuditRepo(pool)
 	auditUC := usecase.NewAudit(auditRepo)
@@ -133,6 +186,7 @@ func main() {
 	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC, auditUC, cfg.ChatModelNormal)
 	webAPI := handler.NewWebAPI(webUC, auditUC)
 	invoiceAPI := handler.NewInvoiceAPI(invoiceUC, auditUC)
+	invoiceAPI.SetCallbackToken(cfg.XenditCallbackToken) // kosong = webhook nonaktif
 	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, webAPI, invoiceAPI, signer, adminSigner, cfg.CORSOriginsApp, cfg.CORSOriginsAdmin)
 	server := httpdelivery.NewServer(cfg.Port, router)
 

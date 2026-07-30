@@ -60,4 +60,6 @@ type InvoiceRepository interface {
 	// satu transaksi. Idempoten: invoice yg sudah paid tak diproses ulang.
 	// Balikan bool = true kalau transisi pending->paid benar-benar terjadi.
 	MarkPaid(ctx context.Context, id uuid.UUID, at time.Time) (*Invoice, bool, error)
+	// simpan hasil gateway (update6 §3.3): provider + id gateway + URL checkout
+	SetProvider(ctx context.Context, id uuid.UUID, provider, providerID, checkoutURL string) error
 }

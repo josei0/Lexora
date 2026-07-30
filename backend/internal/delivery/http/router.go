@@ -24,6 +24,8 @@ func NewRouter(api *handler.API, chats *handler.ChatAPI, billing *handler.Billin
 	web.Routes(mux)
 	invoices.Routes(mux)
 	api.AdminAuthRoutes(mux)
+	api.PublicAuthRoutes(mux)
+	api.AdminOrgRoutes(mux)
 	mux.Handle("/", generated)
 
 	var chain http.Handler = mux

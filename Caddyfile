@@ -1,4 +1,11 @@
-mindlaw.web.id, app.mindlaw.web.id, admin.mindlaw.web.id {
+mindlaw.web.id, app.mindlaw.web.id {
+	reverse_proxy frontend:3000
+}
+
+admin.mindlaw.web.id {
+	# root -> login, path lain (/admin, /admin-login) normal
+	@root path /
+	redir @root /admin-login 302
 	reverse_proxy frontend:3000
 }
 

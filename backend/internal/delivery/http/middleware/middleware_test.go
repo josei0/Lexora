@@ -24,29 +24,38 @@ func TestRateLimitAdminLoginPerIP(t *testing.T) {
 	}
 }
 
-func TestCORSPerGroup(t *testing.T) {
+// CORS bukan security boundary (otorisasi via JWT audience + role). Kedua origin
+// first-party (app + admin) diizinkan di semua path; origin asing ditolak.
+func TestCORSAllowsFirstPartyOrigins(t *testing.T) {
 	h := CORS([]string{"https://mindlaw.web.id"}, []string{"https://admin.lvh.me"})(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
-	// admin origin ok
-	req := httptest.NewRequest(http.MethodOptions, "/auth/admin/login", nil)
-	req.Header.Set("Origin", "https://admin.lvh.me")
+	allow := func(origin, path string) string {
+		req := httptest.NewRequest(http.MethodOptions, path, nil)
+		req.Header.Set("Origin", origin)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Header().Get("Access-Control-Allow-Origin")
+	}
+
+	// kedua origin first-party lolos di path mana pun
+	if got := allow("https://admin.lvh.me", "/auth/admin/login"); got != "https://admin.lvh.me" {
+		t.Fatalf("admin origin harus diizinkan, dapat %q", got)
+	}
+	if got := allow("https://mindlaw.web.id", "/auth/login"); got != "https://mindlaw.web.id" {
+		t.Fatalf("app origin harus diizinkan, dapat %q", got)
+	}
+	// preflight di-cache
+	req := httptest.NewRequest(http.MethodOptions, "/auth/login", nil)
+	req.Header.Set("Origin", "https://mindlaw.web.id")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "https://admin.lvh.me" {
-		t.Fatal("admin origin harus diizinkan di /auth/admin/*")
-	}
 	if rec.Header().Get("Access-Control-Max-Age") != "600" {
 		t.Fatal("preflight tak di-cache (Max-Age hilang)")
 	}
-
-	// app origin ditolak
-	req = httptest.NewRequest(http.MethodOptions, "/auth/admin/login", nil)
-	req.Header.Set("Origin", "https://mindlaw.web.id")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
-		t.Fatal("app origin bocor ke endpoint admin")
+	// origin asing DITOLAK
+	if got := allow("https://evil.example.com", "/auth/login"); got != "" {
+		t.Fatalf("origin asing harus ditolak, dapat %q", got)
 	}
 }
 

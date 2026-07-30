@@ -14,26 +14,49 @@ type UserRepo struct{ db *pgxpool.Pool }
 
 func NewUserRepo(db *pgxpool.Pool) *UserRepo { return &UserRepo{db} }
 
+// kolom user dipakai bareng di semua SELECT (hindari drift)
+const userCols = `id, email, password_hash, full_name, system_role, is_active, must_change_password, created_at,
+	       totp_secret, totp_confirmed_at, totp_last_step,
+	       email_verified_at, verify_token_hash, verify_expires_at, google_sub`
+
 func (r *UserRepo) ByEmail(ctx context.Context, email string) (*domain.User, error) {
-	return scanUser(r.db.QueryRow(ctx, `
-		select id, email, password_hash, full_name, system_role, is_active, must_change_password, created_at,
-		       totp_secret, totp_confirmed_at, totp_last_step
-		from users where email = $1`, email))
+	return scanUser(r.db.QueryRow(ctx, `select `+userCols+` from users where email = $1`, email))
 }
 
 func (r *UserRepo) ByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
-	return scanUser(r.db.QueryRow(ctx, `
-		select id, email, password_hash, full_name, system_role, is_active, must_change_password, created_at,
-		       totp_secret, totp_confirmed_at, totp_last_step
-		from users where id = $1`, id))
+	return scanUser(r.db.QueryRow(ctx, `select `+userCols+` from users where id = $1`, id))
+}
+
+func (r *UserRepo) ByVerifyToken(ctx context.Context, tokenHash string) (*domain.User, error) {
+	return scanUser(r.db.QueryRow(ctx, `select `+userCols+` from users where verify_token_hash = $1`, tokenHash))
+}
+
+func (r *UserRepo) ByGoogleSub(ctx context.Context, sub string) (*domain.User, error) {
+	return scanUser(r.db.QueryRow(ctx, `select `+userCols+` from users where google_sub = $1`, sub))
 }
 
 func (r *UserRepo) Create(ctx context.Context, u *domain.User) error {
 	err := r.db.QueryRow(ctx, `
-		insert into users (email, password_hash, full_name, system_role, is_active, must_change_password)
-		values ($1, $2, $3, $4, $5, $6) returning id, created_at`,
+		insert into users (email, password_hash, full_name, system_role, is_active, must_change_password,
+		                   email_verified_at, verify_token_hash, verify_expires_at, google_sub)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id, created_at`,
 		u.Email, u.PasswordHash, u.FullName, u.SystemRole, u.IsActive, u.MustChangePassword,
+		u.EmailVerifiedAt, u.VerifyTokenHash, u.VerifyExpiresAt, u.GoogleSub,
 	).Scan(&u.ID, &u.CreatedAt)
+	return mapErr(err)
+}
+
+// VerifyEmail: aktifkan akun + tandai verified + hanguskan token (sekali pakai)
+func (r *UserRepo) VerifyEmail(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `
+		update users set is_active = true, email_verified_at = now(),
+		       verify_token_hash = null, verify_expires_at = null, updated_at = now()
+		where id = $1`, id)
+	return err
+}
+
+func (r *UserRepo) LinkGoogle(ctx context.Context, id uuid.UUID, sub string) error {
+	_, err := r.db.Exec(ctx, `update users set google_sub = $2, updated_at = now() where id = $1`, id, sub)
 	return mapErr(err)
 }
 
@@ -67,7 +90,8 @@ func (r *UserRepo) SetTOTPLastStep(ctx context.Context, id uuid.UUID, step int64
 func scanUser(row pgx.Row) (*domain.User, error) {
 	var u domain.User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.FullName, &u.SystemRole, &u.IsActive, &u.MustChangePassword, &u.CreatedAt,
-		&u.TOTPSecret, &u.TOTPConfirmedAt, &u.TOTPLastStep)
+		&u.TOTPSecret, &u.TOTPConfirmedAt, &u.TOTPLastStep,
+		&u.EmailVerifiedAt, &u.VerifyTokenHash, &u.VerifyExpiresAt, &u.GoogleSub)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

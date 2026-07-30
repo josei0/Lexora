@@ -24,6 +24,9 @@ const (
 	AuditInvoicePaid    = "billing.invoice_paid"
 	AuditManualPaid     = "billing.manual_paid"
 	AuditPromptUpdate   = "prompt.update"
+	AuditRegister       = "auth.register"   // self-serve register (update6)
+	AuditGoogleAuth     = "auth.google"     // login/register via Google (update6)
+	AuditWebhookPaid    = "webhook.paid"    // pelunasan via webhook Xendit (update6)
 )
 
 // satu baris audit. Tanpa kolom bebas isi — hindari kebocoran data sensitif.

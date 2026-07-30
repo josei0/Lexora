@@ -86,11 +86,56 @@ export async function login(email: string, password: string): Promise<Tokens> {
   return tok
 }
 
+// self-serve register (update6). Endpoint publik: fetch mentah TANPA bearer
+// (bearer invalid = 401 sebelum handler). Tak auto-login: user verifikasi email dulu.
+export type RegisterResult = { message: string; needs_verify: boolean }
+
+export async function register(
+  firmaName: string,
+  fullName: string,
+  email: string,
+  password: string,
+): Promise<RegisterResult> {
+  const res = await fetch(`${BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ firma_name: firmaName, full_name: fullName, email, password }),
+  })
+  if (!res.ok) throw await parseError(res)
+  return res.json()
+}
+
+export async function verifyEmail(token: string): Promise<{ message: string }> {
+  const res = await fetch(`${BASE}/auth/verify-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  if (!res.ok) throw await parseError(res)
+  return res.json()
+}
+
+// login/register via Google (update6 §5.3). Endpoint publik: fetch mentah tanpa bearer.
+// Sukses -> set access token (user langsung masuk, spt login biasa).
+export async function loginGoogle(idToken: string): Promise<Tokens> {
+  const res = await fetch(`${BASE}/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ id_token: idToken }),
+  })
+  if (!res.ok) throw await parseError(res)
+  const tok: Tokens = await res.json()
+  accessToken = tok.access_token
+  return tok
+}
+
 // login admin 2 langkah: password -> (enroll | mfa) -> token
 export type AdminLoginStep = {
   enroll_required?: boolean
   mfa_required?: boolean
   otpauth_url?: string
+  access_token?: string
 }
 
 export type AdminTokens = Tokens & { recovery_codes?: string[] }
@@ -107,7 +152,9 @@ async function postAdminAuth<T>(path: string, body: object): Promise<T> {
 }
 
 export async function adminLogin(email: string, password: string): Promise<AdminLoginStep> {
-  return postAdminAuth<AdminLoginStep>('/auth/admin/login', { email, password })
+  const res = await postAdminAuth<AdminLoginStep>('/auth/admin/login', { email, password })
+  if (res.access_token) accessToken = res.access_token
+  return res
 }
 
 export async function adminEnroll(email: string, password: string, code: string): Promise<AdminTokens> {
@@ -193,6 +240,7 @@ export type Invoice = {
   period_start: string
   period_end: string
   status: 'pending' | 'paid' | 'expired' | 'void'
+  checkout_url?: string // URL bayar Xendit (kalau gateway aktif)
   paid_at?: string
   created_at: string
 }
@@ -223,6 +271,33 @@ export function listMembers(): Promise<Member[]> {
 
 export function addMember(email: string, fullName: string, role: Member['role']): Promise<NewMember> {
   return api<NewMember>('/members', {
+    method: 'POST',
+    body: JSON.stringify({ email, full_name: fullName, role }),
+  })
+}
+
+// super_admin (update6 §5.4): buat org baru + assign 1 akun ke org existing.
+export type Organization = { id: string; name: string; slug: string; created_at?: string }
+
+export function createOrganization(
+  name: string,
+  slug: string,
+  adminEmail: string,
+  adminFullName: string,
+): Promise<{ organization: Organization; admin: NewMember }> {
+  return api('/organizations', {
+    method: 'POST',
+    body: JSON.stringify({ name, slug, admin_email: adminEmail, admin_full_name: adminFullName }),
+  })
+}
+
+export function assignMemberToOrg(
+  orgId: string,
+  email: string,
+  fullName: string,
+  role: Member['role'] = 'member',
+): Promise<NewMember> {
+  return api<NewMember>(`/admin/organizations/${orgId}/members`, {
     method: 'POST',
     body: JSON.stringify({ email, full_name: fullName, role }),
   })

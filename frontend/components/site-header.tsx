@@ -43,6 +43,9 @@ export function SiteHeader() {
           <Button render={<a href="/login" />} nativeButton={false} variant="ghost" className="text-sm font-medium">
             Masuk
           </Button>
+          <Button render={<a href="/register" />} nativeButton={false} variant="ghost" className="text-sm font-medium">
+            Daftar
+          </Button>
           <Button render={<a href={DEMO_MAILTO} />} nativeButton={false} className="text-sm font-medium">
             Minta demo
           </Button>

@@ -14,6 +14,13 @@ const (
 	PromptSystem = "system"
 )
 
+// ModelUsage: total token per model lintas org, untuk estimasi saldo Maia.
+type ModelUsage struct {
+	Model        string
+	InputTokens  int64
+	OutputTokens int64
+}
+
 type Plan struct {
 	ID   uuid.UUID `json:"id"`
 	Code string    `json:"code"`

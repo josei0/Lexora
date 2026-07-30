@@ -53,6 +53,32 @@ func (f *fakeUsers) SetTOTPLastStep(_ context.Context, id uuid.UUID, step int64)
 	f.m[id].TOTPLastStep = step
 	return nil
 }
+func (f *fakeUsers) ByVerifyToken(_ context.Context, h string) (*domain.User, error) {
+	for _, u := range f.m {
+		if u.VerifyTokenHash != nil && *u.VerifyTokenHash == h {
+			return u, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+func (f *fakeUsers) VerifyEmail(_ context.Context, id uuid.UUID) error {
+	now := time.Now()
+	u := f.m[id]
+	u.IsActive, u.EmailVerifiedAt, u.VerifyTokenHash, u.VerifyExpiresAt = true, &now, nil, nil
+	return nil
+}
+func (f *fakeUsers) ByGoogleSub(_ context.Context, sub string) (*domain.User, error) {
+	for _, u := range f.m {
+		if u.GoogleSub != nil && *u.GoogleSub == sub {
+			return u, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+func (f *fakeUsers) LinkGoogle(_ context.Context, id uuid.UUID, sub string) error {
+	f.m[id].GoogleSub = &sub
+	return nil
+}
 
 type fakeMembers struct{ list []domain.Membership }
 

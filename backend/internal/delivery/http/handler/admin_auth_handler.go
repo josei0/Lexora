@@ -51,6 +51,13 @@ func (a *API) adminLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"enroll_required": true, "otpauth_url": step.OTPAuthURL})
 		return
 	}
+	if step.Tokens != nil {
+		uid := step.Tokens.UserID
+		a.audit.Record(r.Context(), domain.AuditAdminLoginOK, nil, &uid, nil, ip)
+		w.Header().Set("Set-Cookie", a.adminCookie(step.Tokens.Refresh, a.refreshTTL))
+		writeJSON(w, http.StatusOK, tokenBody(step.Tokens))
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"mfa_required": true})
 }
 

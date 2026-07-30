@@ -1,8 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
+import { GoogleButton } from '@/components/google-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -67,7 +69,16 @@ export default function LoginPage() {
             <Button type="submit" size="lg" disabled={loading} className="mt-2">
               {loading ? 'Memproses…' : 'Masuk'}
             </Button>
+            <p className="text-center text-sm text-muted-foreground">
+              Belum punya akun?{' '}
+              <Link href="/register" className="font-medium text-primary hover:underline">
+                Daftar
+              </Link>
+            </p>
           </form>
+          <div className="mt-4">
+            <GoogleButton onSuccess={() => router.replace('/app')} onError={setError} />
+          </div>
         </CardContent>
       </Card>
     </main>

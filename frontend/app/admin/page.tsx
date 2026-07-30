@@ -1,6 +1,6 @@
 'use client'
 
-import { CreditCard, LogOut, ScrollText, Terminal } from 'lucide-react'
+import { Building2, CreditCard, LogOut, ScrollText, Terminal } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -10,17 +10,20 @@ import {
   ApiError,
   adminLogout,
   api,
+  assignMemberToOrg,
   assignSubscription,
+  createOrganization,
   getPrompt,
   listAuditLogs,
   listPlans,
   setPrompt,
   type AuditLog,
+  type NewMember,
   type Plan,
 } from '@/lib/api'
 
 type Org = { id: string; name: string; slug: string }
-type Tab = 'sub' | 'prompt' | 'log'
+type Tab = 'org' | 'sub' | 'prompt' | 'log'
 
 const auditLabels: Record<string, string> = {
   'login.ok': 'Login berhasil',
@@ -36,6 +39,7 @@ const auditLabels: Record<string, string> = {
 }
 
 const nav: { id: Tab; label: string; desc: string; icon: typeof CreditCard }[] = [
+  { id: 'org', label: 'Organisasi', desc: 'Buat organisasi atau assign akun', icon: Building2 },
   { id: 'sub', label: 'Langganan', desc: 'Assign paket ke organisasi', icon: CreditCard },
   { id: 'prompt', label: 'System Prompt', desc: 'Instruksi dasar asisten', icon: Terminal },
   { id: 'log', label: 'Log Aktivitas', desc: 'Jejak audit terbaru', icon: ScrollText },
@@ -43,7 +47,7 @@ const nav: { id: Tab; label: string; desc: string; icon: typeof CreditCard }[] =
 
 export default function AdminPage() {
   const router = useRouter()
-  const [tab, setTab] = useState<Tab>('sub')
+  const [tab, setTab] = useState<Tab>('org')
 
   const [orgs, setOrgs] = useState<Org[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
@@ -57,6 +61,20 @@ export default function AdminPage() {
   const [seats, setSeats] = useState(1)
   const [subMsg, setSubMsg] = useState('')
 
+  // buat organisasi baru
+  const [orgName, setOrgName] = useState('')
+  const [orgAdminEmail, setOrgAdminEmail] = useState('')
+  const [orgAdminName, setOrgAdminName] = useState('')
+  const [createResult, setCreateResult] = useState<NewMember | null>(null)
+  const [createErr, setCreateErr] = useState('')
+
+  // assign akun ke org existing (default: mindlaw)
+  const [assignOrg, setAssignOrg] = useState('')
+  const [assignEmail, setAssignEmail] = useState('')
+  const [assignName, setAssignName] = useState('')
+  const [assignResult, setAssignResult] = useState<NewMember | null>(null)
+  const [assignErr, setAssignErr] = useState('')
+
   useEffect(() => {
     Promise.all([
       api<Org[]>('/organizations'),
@@ -68,8 +86,37 @@ export default function AdminPage() {
       setPlans(p)
       setPromptText(pr.content)
       setLogs(l)
+      // default assign ke org rumah "mindlaw" kalau ada
+      const home = o.find(x => x.slug === 'mindlaw') ?? o[0]
+      if (home) setAssignOrg(home.id)
     }).catch(e => setError(e instanceof ApiError ? e.message : 'gagal memuat data'))
   }, [])
+
+  async function handleCreateOrg(e: React.FormEvent) {
+    e.preventDefault()
+    setCreateErr(''); setCreateResult(null)
+    const slug = orgName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    try {
+      const res = await createOrganization(orgName, slug, orgAdminEmail, orgAdminName)
+      setCreateResult(res.admin)
+      setOrgs(prev => [{ id: res.organization.id, name: res.organization.name, slug: res.organization.slug }, ...prev])
+      setOrgName(''); setOrgAdminEmail(''); setOrgAdminName('')
+    } catch (e) {
+      setCreateErr(e instanceof ApiError ? e.message : 'gagal membuat organisasi')
+    }
+  }
+
+  async function handleAssign2(e: React.FormEvent) {
+    e.preventDefault()
+    setAssignErr(''); setAssignResult(null)
+    try {
+      const nm = await assignMemberToOrg(assignOrg, assignEmail, assignName)
+      setAssignResult(nm)
+      setAssignEmail(''); setAssignName('')
+    } catch (e) {
+      setAssignErr(e instanceof ApiError ? e.message : 'gagal assign akun')
+    }
+  }
 
   async function handleAssign(e: React.FormEvent) {
     e.preventDefault()
@@ -137,6 +184,59 @@ export default function AdminPage() {
 
         <div className="mx-auto max-w-2xl px-8 py-8">
           {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+
+          {tab === 'org' && (
+            <div className="space-y-10">
+              <form onSubmit={handleCreateOrg} className="space-y-5">
+                <div>
+                  <h2 className="text-sm font-semibold">Buat Organisasi</h2>
+                  <p className="text-sm text-muted-foreground">Bikin firma baru + akun admin pertamanya.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Nama organisasi</label>
+                  <Input value={orgName} onChange={e => setOrgName(e.target.value)} required />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Nama admin</label>
+                  <Input value={orgAdminName} onChange={e => setOrgAdminName(e.target.value)} required />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Email admin</label>
+                  <Input type="email" value={orgAdminEmail} onChange={e => setOrgAdminEmail(e.target.value)} required />
+                </div>
+                {createErr && <p className="text-sm text-destructive">{createErr}</p>}
+                {createResult && <CredCard nm={createResult} />}
+                <Button type="submit">Buat organisasi</Button>
+              </form>
+
+              <form onSubmit={handleAssign2} className="space-y-5 border-t border-border pt-8">
+                <div>
+                  <h2 className="text-sm font-semibold">Assign Akun</h2>
+                  <p className="text-sm text-muted-foreground">Tambah 1 akun ke organisasi yang sudah ada (mis. mindlaw).</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Organisasi</label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    value={assignOrg} onChange={e => setAssignOrg(e.target.value)} required
+                  >
+                    {orgs.map(o => <option key={o.id} value={o.id}>{o.name}{o.slug === 'mindlaw' ? ' (internal)' : ''}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Nama</label>
+                  <Input value={assignName} onChange={e => setAssignName(e.target.value)} required />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Email</label>
+                  <Input type="email" value={assignEmail} onChange={e => setAssignEmail(e.target.value)} required />
+                </div>
+                {assignErr && <p className="text-sm text-destructive">{assignErr}</p>}
+                {assignResult && <CredCard nm={assignResult} />}
+                <Button type="submit">Assign akun</Button>
+              </form>
+            </div>
+          )}
 
           {tab === 'sub' && (
             <form onSubmit={handleAssign} className="space-y-5">
@@ -206,6 +306,18 @@ export default function AdminPage() {
           )}
         </div>
       </main>
+    </div>
+  )
+}
+
+// kartu hasil: email + temp password sekali tampil (super_admin salin ke user)
+function CredCard({ nm }: { nm: NewMember }) {
+  return (
+    <div className="space-y-1 rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
+      <p className="font-medium text-primary">✓ Akun dibuat</p>
+      <p>Email: <span className="font-mono">{nm.email}</span></p>
+      <p>Password sementara: <span className="font-mono">{nm.temp_password}</span></p>
+      <p className="text-xs text-muted-foreground">Salin dan berikan ke pengguna. Hanya tampil sekali.</p>
     </div>
   )
 }

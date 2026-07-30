@@ -25,6 +25,8 @@ var (
 	ErrInvalidUpload   = errors.New("invalid upload")
 	ErrTooLarge        = errors.New("file too large")
 	ErrUnsupportedType = errors.New("unsupported file type")
+
+	ErrGoogleUnlinked = errors.New("email terdaftar tanpa google") // pakai login password
 )
 
 const (
@@ -48,6 +50,12 @@ type User struct {
 	TOTPSecret      *string
 	TOTPConfirmedAt *time.Time
 	TOTPLastStep    int64 // step terakhir terpakai - anti-replay (T19)
+
+	// self-serve register (update6): verif email = kolom, bukan tabel
+	EmailVerifiedAt *time.Time
+	VerifyTokenHash *string    // sha256 token verif, null setelah dipakai
+	VerifyExpiresAt *time.Time // TTL token verif
+	GoogleSub       *string    // subject Google (login Google), null = akun password
 }
 
 // kode recovery TOTP sekali pakai
@@ -109,6 +117,12 @@ type UserRepository interface {
 	SetTOTPSecret(ctx context.Context, id uuid.UUID, secret string) error
 	ConfirmTOTP(ctx context.Context, id uuid.UUID) error
 	SetTOTPLastStep(ctx context.Context, id uuid.UUID, step int64) error
+
+	// self-serve register (update6)
+	ByVerifyToken(ctx context.Context, tokenHash string) (*User, error)
+	VerifyEmail(ctx context.Context, id uuid.UUID) error // is_active=true, email_verified_at=now, token hangus
+	ByGoogleSub(ctx context.Context, sub string) (*User, error)
+	LinkGoogle(ctx context.Context, id uuid.UUID, sub string) error
 }
 
 type RecoveryCodeRepository interface {

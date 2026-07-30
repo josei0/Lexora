@@ -4,24 +4,52 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lexora/backend/internal/domain"
 	"github.com/lexora/backend/pkg/hash"
 )
 
+// Mailer: interface kecil (dependency inversion) - impl di pkg/mailer.
+type Mailer interface {
+	Send(to, subject, body string) error
+	Enabled() bool
+}
+
 type Organization struct {
-	orgs    domain.OrganizationRepository
-	users   domain.UserRepository
-	members domain.MembershipRepository
-	seats   *Subscription // ponytail: nil = tanpa batas seat
+	orgs       domain.OrganizationRepository
+	users      domain.UserRepository
+	members    domain.MembershipRepository
+	seats      *Subscription // ponytail: nil = tanpa batas seat
+	mailer     Mailer        // nil = register langsung aktif (dev tanpa SMTP)
+	appBaseURL string        // untuk link verifikasi email
 }
 
 func NewOrganization(o domain.OrganizationRepository, u domain.UserRepository, m domain.MembershipRepository) *Organization {
-	return &Organization{o, u, m, nil}
+	return &Organization{orgs: o, users: u, members: m}
 }
 
 func (o *Organization) SetSeatGuard(s *Subscription) { o.seats = s }
+
+// SetMailer: aktifkan verifikasi email register. Kosong = akun langsung aktif.
+func (o *Organization) SetMailer(m Mailer, appBaseURL string) {
+	o.mailer, o.appBaseURL = m, appBaseURL
+}
+
+const verifyTTL = 24 * time.Hour
+
+// opsi addUser: Create/AddMember pakai default (temp password, aktif, must-change);
+// Register pakai eksplisit (password user, nonaktif sampai verif).
+type addUserOpts struct {
+	password    *string // nil = generate temp password
+	isActive    bool
+	mustChange  bool
+	verifyHash  *string
+	verifyExp   *time.Time
+	googleSub   *string
+	verifiedNow bool // true (jalur Google) -> email_verified_at = now
+}
 
 type NewMember struct {
 	UserID       uuid.UUID
@@ -42,7 +70,7 @@ func (o *Organization) Create(ctx context.Context, name, slug, adminEmail, admin
 			return nil, nil, err
 		}
 	}
-	admin, err := o.addUser(ctx, org.ID, adminEmail, adminName, domain.OrgRoleAdmin)
+	admin, err := o.addUser(ctx, org.ID, adminEmail, adminName, domain.OrgRoleAdmin, addUserOpts{isActive: true, mustChange: true})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -58,15 +86,95 @@ func (o *Organization) AddMember(ctx context.Context, orgID uuid.UUID, email, fu
 			return nil, err
 		}
 	}
-	return o.addUser(ctx, orgID, email, fullName, role)
+	return o.addUser(ctx, orgID, email, fullName, role, addUserOpts{isActive: true, mustChange: true})
 }
 
-func (o *Organization) addUser(ctx context.Context, orgID uuid.UUID, email, fullName, role string) (*NewMember, error) {
-	temp, err := tempPassword()
+// Register: self-serve. Bikin org+Demo+org_admin dgn password user, akun nonaktif
+// sampai verifikasi email. mailer nil / disabled -> langsung aktif (dev).
+// skipVerify=true (jalur Google): aktif langsung tanpa email. googleSub opsional.
+func (o *Organization) Register(ctx context.Context, firmaName, adminName, email, password string, skipVerify bool, googleSub *string) (*domain.User, error) {
+	slug, err := uniqueSlug(firmaName, func(s string) bool {
+		_, err := o.orgs.BySlug(ctx, s)
+		return err == nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	h, err := hash.Password(temp)
+	org := &domain.Organization{Name: firmaName, Slug: slug}
+	if err := o.orgs.Create(ctx, org); err != nil {
+		return nil, err
+	}
+	if o.seats != nil {
+		if _, err := o.seats.Assign(ctx, org.ID, domain.PlanDemo, 1); err != nil {
+			return nil, err
+		}
+	}
+
+	// verifikasi email aktif hanya kalau mailer siap DAN bukan jalur skip (Google)
+	active := skipVerify || o.mailer == nil || !o.mailer.Enabled()
+	// Google (skipVerify) sudah memverifikasi email -> tandai verified sekarang
+	opts := addUserOpts{password: &password, isActive: active, mustChange: false, googleSub: googleSub, verifiedNow: skipVerify}
+
+	var rawToken string
+	if !active {
+		rawToken, err = randToken()
+		if err != nil {
+			return nil, err
+		}
+		h := hashToken(rawToken)
+		exp := time.Now().Add(verifyTTL)
+		opts.verifyHash, opts.verifyExp = &h, &exp
+	}
+
+	nm, err := o.addUser(ctx, org.ID, email, adminName, domain.OrgRoleAdmin, opts)
+	if err != nil {
+		return nil, err
+	}
+	if !active {
+		o.sendVerifyEmail(email, rawToken) // best-effort; akun tetap dibuat
+	}
+	u, err := o.users.ByID(ctx, nm.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// VerifyEmail: token cocok + belum kadaluarsa -> aktifkan akun.
+func (o *Organization) VerifyEmail(ctx context.Context, rawToken string) error {
+	u, err := o.users.ByVerifyToken(ctx, hashToken(rawToken))
+	if err != nil {
+		return domain.ErrInvalidToken
+	}
+	if u.VerifyExpiresAt == nil || time.Now().After(*u.VerifyExpiresAt) {
+		return domain.ErrInvalidToken
+	}
+	return o.users.VerifyEmail(ctx, u.ID)
+}
+
+func (o *Organization) sendVerifyEmail(email, rawToken string) {
+	if o.mailer == nil {
+		return
+	}
+	link := o.appBaseURL + "/verify-email?token=" + rawToken
+	_ = o.mailer.Send(email, "Verifikasi email MindLaw",
+		"Klik untuk mengaktifkan akun MindLaw Anda:\n\n"+link+"\n\nTautan berlaku 24 jam.")
+}
+
+// addUser: bikin user + membership. opts.password nil = generate temp (dipakai
+// Create/AddMember). NewMember.TempPassword kosong kalau password dari user (Register).
+func (o *Organization) addUser(ctx context.Context, orgID uuid.UUID, email, fullName, role string, opts addUserOpts) (*NewMember, error) {
+	var temp, plain string
+	if opts.password != nil {
+		plain = *opts.password
+	} else {
+		t, err := tempPassword()
+		if err != nil {
+			return nil, err
+		}
+		temp, plain = t, t
+	}
+	h, err := hash.Password(plain)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +183,15 @@ func (o *Organization) addUser(ctx context.Context, orgID uuid.UUID, email, full
 		PasswordHash:       h,
 		FullName:           fullName,
 		SystemRole:         domain.SystemRoleNone,
-		IsActive:           true,
-		MustChangePassword: true,
+		IsActive:           opts.isActive,
+		MustChangePassword: opts.mustChange,
+		VerifyTokenHash:    opts.verifyHash,
+		VerifyExpiresAt:    opts.verifyExp,
+		GoogleSub:          opts.googleSub,
+	}
+	if opts.verifiedNow {
+		now := time.Now()
+		u.EmailVerifiedAt = &now
 	}
 	if err := o.users.Create(ctx, u); err != nil {
 		return nil, err

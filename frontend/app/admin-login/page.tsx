@@ -41,6 +41,10 @@ export default function AdminLoginPage() {
     setLoading(true)
     try {
       const res = await adminLogin(email, password)
+      if (res.access_token) {
+        router.replace('/admin')
+        return
+      }
       if (res.enroll_required && res.otpauth_url) {
         setSecret(secretFrom(res.otpauth_url))
         setStep('enroll')

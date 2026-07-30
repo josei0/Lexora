@@ -140,6 +140,27 @@ func (r *UsageRepo) OrgTokens(ctx context.Context, orgID uuid.UUID, from, to tim
 	return total, err
 }
 
+// ModelTokens: total input/output per model LINTAS SEMUA org (saldo Maia global,
+// 1 API key). Dipakai estimasi saldo (update6 §4.1).
+func (r *UsageRepo) ModelTokens(ctx context.Context) ([]domain.ModelUsage, error) {
+	rows, err := r.db.Query(ctx, `
+		select model, coalesce(sum(input_tokens), 0), coalesce(sum(output_tokens), 0)
+		from token_usage group by model`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ModelUsage
+	for rows.Next() {
+		var m domain.ModelUsage
+		if err := rows.Scan(&m.Model, &m.InputTokens, &m.OutputTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 func (r *UsageRepo) CountMembers(ctx context.Context, orgID uuid.UUID) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx, `select count(*) from memberships where organization_id = $1`, orgID).Scan(&n)
