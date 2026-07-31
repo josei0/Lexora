@@ -529,6 +529,8 @@ export type Plan = {
   name: string
   price_idr: number
   monthly_token_limit: number
+  session_token_limit: number // 0 = window nonaktif (update8)
+  weekly_token_limit: number
   is_active: boolean
 }
 
@@ -600,6 +602,11 @@ export function getQuota() {
 
 export function listPlans() {
   return api<Plan[]>('/plans')
+}
+
+// super admin: ubah limit window plan; field undefined = tak diubah (update8 F4)
+export function updatePlanLimits(code: string, limits: { monthly?: number; session?: number; weekly?: number }) {
+  return api<Plan>(`/plans/${code}/limits`, { method: 'PUT', body: JSON.stringify(limits) })
 }
 
 export function getSubscription() {

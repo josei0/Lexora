@@ -95,6 +95,8 @@ type PlanRepository interface {
 	List(ctx context.Context) ([]Plan, error)
 	ByCode(ctx context.Context, code string) (*Plan, error)
 	Upsert(ctx context.Context, p *Plan) error
+	// ubah limit per window (update8 F4); nil = kolom tak disentuh
+	UpdateLimits(ctx context.Context, code string, monthly, session, weekly *int64) error
 }
 
 type SubscriptionRepository interface {

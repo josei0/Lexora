@@ -22,6 +22,23 @@ func (s *Subscription) Plans(ctx context.Context) ([]domain.Plan, error) {
 	return s.plans.List(ctx)
 }
 
+func (s *Subscription) PlanByCode(ctx context.Context, code string) (*domain.Plan, error) {
+	return s.plans.ByCode(ctx, code)
+}
+
+// super admin ubah limit window plan (update8 F4). nil = tak diubah; negatif ditolak.
+func (s *Subscription) UpdatePlanLimits(ctx context.Context, code string, monthly, session, weekly *int64) error {
+	if monthly == nil && session == nil && weekly == nil {
+		return domain.ErrInvalidUpload
+	}
+	for _, v := range []*int64{monthly, session, weekly} {
+		if v != nil && *v < 0 {
+			return domain.ErrInvalidUpload
+		}
+	}
+	return s.plans.UpdateLimits(ctx, code, monthly, session, weekly)
+}
+
 func (s *Subscription) ByOrg(ctx context.Context, orgID uuid.UUID) (*domain.SubscriptionView, error) {
 	return s.subs.ByOrg(ctx, orgID)
 }

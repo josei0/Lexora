@@ -58,6 +58,25 @@ func (r *PlanRepo) Upsert(ctx context.Context, p *domain.Plan) error {
 		p.IsActive, p.WebSearchEnabled, p.DailyWebSearches, p.DailyMessages).Scan(&p.ID)
 }
 
+// ubah limit window tanpa menyentuh kolom lain (admin, update8 F4). nil = tak diubah.
+func (r *PlanRepo) UpdateLimits(ctx context.Context, code string, monthly, session, weekly *int64) error {
+	ct, err := r.db.Exec(ctx, `
+		update plans set
+			monthly_token_limit = coalesce($2, monthly_token_limit),
+			session_token_limit = coalesce($3, session_token_limit),
+			weekly_token_limit  = coalesce($4, weekly_token_limit),
+			updated_at = now()
+		where code = $1`,
+		code, monthly, session, weekly)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func scanPlan(row pgx.Row) (*domain.Plan, error) {
 	var p domain.Plan
 	err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Model, &p.PriceIDR, &p.MonthlyTokenLimit,

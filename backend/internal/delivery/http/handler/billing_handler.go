@@ -43,6 +43,7 @@ func (a *BillingAPI) Routes(mux *http.ServeMux) {
 
 	// subscription (super admin)
 	mux.HandleFunc("GET /plans", a.listPlans)
+	mux.HandleFunc("PUT /plans/{code}/limits", a.updatePlanLimits)
 	mux.HandleFunc("GET /subscription", a.getSub)
 	mux.HandleFunc("PUT /subscription", a.assignSub)
 
@@ -112,6 +113,46 @@ func windowsJSON(ws []usecase.WindowUsage) []map[string]any {
 		})
 	}
 	return out
+}
+
+// PUT /plans/{code}/limits  (super admin: ubah limit window, update8 F4)
+// body {"monthly":N,"session":N,"weekly":N} — field absen = tak diubah.
+func (a *BillingAPI) updatePlanLimits(w http.ResponseWriter, r *http.Request) {
+	id, ok := middleware.IdentityFrom(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "sesi tidak valid")
+		return
+	}
+	if !id.IsSuperAdmin() {
+		writeError(w, http.StatusForbidden, "forbidden", "akses ditolak")
+		return
+	}
+	var body struct {
+		Monthly *int64 `json:"monthly"`
+		Session *int64 `json:"session"`
+		Weekly  *int64 `json:"weekly"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "body tidak valid")
+		return
+	}
+	if err := a.subs.UpdatePlanLimits(r.Context(), r.PathValue("code"), body.Monthly, body.Session, body.Weekly); err != nil {
+		switch err {
+		case domain.ErrNotFound:
+			writeError(w, http.StatusNotFound, "not_found", "plan tidak ditemukan")
+		case domain.ErrInvalidUpload:
+			writeError(w, http.StatusBadRequest, "invalid_request", "limit tak boleh negatif / tak ada field")
+		default:
+			writeErr(w, err)
+		}
+		return
+	}
+	plan, err := a.subs.PlanByCode(r.Context(), r.PathValue("code"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
 }
 
 // GET /plans

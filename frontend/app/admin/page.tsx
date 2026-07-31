@@ -17,6 +17,7 @@ import {
   listAuditLogs,
   listPlans,
   setPrompt,
+  updatePlanLimits,
   type AuditLog,
   type NewMember,
   type Plan,
@@ -24,6 +25,60 @@ import {
 
 type Org = { id: string; name: string; slug: string }
 type Tab = 'org' | 'sub' | 'prompt' | 'log'
+
+// form limit window satu plan (update8 F4). Input string '' = tak diubah.
+function PlanLimitForm({ plan, onSaved }: { plan: Plan; onSaved: (p: Plan) => void }) {
+  const [session, setSession] = useState('')
+  const [weekly, setWeekly] = useState('')
+  const [monthly, setMonthly] = useState('')
+  const [msg, setMsg] = useState('')
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setMsg('')
+    const limits: { monthly?: number; session?: number; weekly?: number } = {}
+    if (monthly !== '') limits.monthly = Number(monthly)
+    if (session !== '') limits.session = Number(session)
+    if (weekly !== '') limits.weekly = Number(weekly)
+    if (Object.keys(limits).length === 0) {
+      setMsg('Isi minimal satu kolom')
+      return
+    }
+    try {
+      const np = await updatePlanLimits(plan.code, limits)
+      onSaved(np)
+      setSession(''); setWeekly(''); setMonthly('')
+      setMsg('✓ Tersimpan')
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : 'gagal menyimpan')
+    }
+  }
+
+  const fields: { label: string; cur: number; val: string; set: (v: string) => void }[] = [
+    { label: 'Sesi 5 jam', cur: plan.session_token_limit, val: session, set: setSession },
+    { label: 'Mingguan', cur: plan.weekly_token_limit, val: weekly, set: setWeekly },
+    { label: 'Bulanan', cur: plan.monthly_token_limit, val: monthly, set: setMonthly },
+  ]
+  return (
+    <form onSubmit={save} className="space-y-2 rounded-lg border p-4">
+      <p className="text-sm font-medium">{plan.name}</p>
+      <div className="grid grid-cols-3 gap-3">
+        {fields.map(f => (
+          <div key={f.label} className="space-y-1">
+            <label className="text-xs text-muted-foreground">
+              {f.label} <span className="text-foreground">(kini: {f.cur > 0 ? f.cur.toLocaleString('id-ID') : 'nonaktif'})</span>
+            </label>
+            <Input type="number" min={0} value={f.val} onChange={e => f.set(e.target.value)} placeholder={String(f.cur)} />
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-3">
+        <Button type="submit" size="sm" variant="outline">Simpan batas</Button>
+        {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+      </div>
+    </form>
+  )
+}
 
 const auditLabels: Record<string, string> = {
   'login.ok': 'Login berhasil',
@@ -239,34 +294,47 @@ export default function AdminPage() {
           )}
 
           {tab === 'sub' && (
-            <form onSubmit={handleAssign} className="space-y-5">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Organisasi</label>
-                <select
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  value={selOrg} onChange={e => setSelOrg(e.target.value)} required
-                >
-                  <option value="">Pilih organisasi…</option>
-                  {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+            <div className="space-y-8">
+              <form onSubmit={handleAssign} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Organisasi</label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    value={selOrg} onChange={e => setSelOrg(e.target.value)} required
+                  >
+                    <option value="">Pilih organisasi…</option>
+                    {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Paket</label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    value={selPlan} onChange={e => setSelPlan(e.target.value)} required
+                  >
+                    <option value="">Pilih plan…</option>
+                    {plans.map(p => <option key={p.id} value={p.code}>{p.name} · {p.monthly_token_limit > 0 ? `${(p.monthly_token_limit / 1000).toFixed(0)}k tok/seat` : 'unlimited'}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Jumlah seat</label>
+                  <Input type="number" min={1} value={seats} onChange={e => setSeats(Number(e.target.value))} className="w-32" required />
+                </div>
+                {subMsg && <p className="text-sm text-primary">{subMsg}</p>}
+                <Button type="submit">Assign langganan</Button>
+              </form>
+
+              {/* limit per window per plan (update8 F4); 0 = window nonaktif */}
+              <div className="space-y-4 border-t pt-6">
+                <div>
+                  <h3 className="text-sm font-medium">Batas token per paket (per seat)</h3>
+                  <p className="text-xs text-muted-foreground">0 = window tidak membatasi. Kosongkan kolom yang tak diubah.</p>
+                </div>
+                {plans.map(p => (
+                  <PlanLimitForm key={p.id} plan={p} onSaved={np => setPlans(prev => prev.map(x => (x.id === np.id ? np : x)))} />
+                ))}
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Paket</label>
-                <select
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  value={selPlan} onChange={e => setSelPlan(e.target.value)} required
-                >
-                  <option value="">Pilih plan…</option>
-                  {plans.map(p => <option key={p.id} value={p.code}>{p.name} · {p.monthly_token_limit > 0 ? `${(p.monthly_token_limit / 1000).toFixed(0)}k tok/seat` : 'unlimited'}</option>)}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Jumlah seat</label>
-                <Input type="number" min={1} value={seats} onChange={e => setSeats(Number(e.target.value))} className="w-32" required />
-              </div>
-              {subMsg && <p className="text-sm text-primary">{subMsg}</p>}
-              <Button type="submit">Assign langganan</Button>
-            </form>
+            </div>
           )}
 
           {tab === 'prompt' && (

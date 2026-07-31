@@ -118,11 +118,14 @@ func subscribe(ctx context.Context, pool *pgxpool.Pool, orgID uuid.UUID, planCod
 func seedPlans(ctx context.Context, pool *pgxpool.Pool) {
 	repo := postgres.NewPlanRepo(pool)
 	plans := []domain.Plan{
+		// update8: limit per window per seat. 0 = window nonaktif.
+		// Demo: ketat di semua window (session 30k, weekly 80k, monthly 200k) + cap harian.
 		{Code: domain.PlanDemo, Name: "Demo", Model: "anthropic/claude-haiku-4-5", PriceIDR: 0,
-			MonthlyTokenLimit: 200_000, IsActive: true,
+			MonthlyTokenLimit: 200_000, SessionTokenLimit: 30_000, WeeklyTokenLimit: 80_000, IsActive: true,
 			WebSearchEnabled: false, DailyWebSearches: 0, DailyMessages: 10},
+		// Pro: longgar — session 300k, weekly 800k, monthly 2jt per seat.
 		{Code: domain.PlanPro, Name: "Pro", Model: "maia/claude-sonnet-4-5", PriceIDR: 275_000,
-			MonthlyTokenLimit: 2_000_000, IsActive: true,
+			MonthlyTokenLimit: 2_000_000, SessionTokenLimit: 300_000, WeeklyTokenLimit: 800_000, IsActive: true,
 			WebSearchEnabled: true, DailyWebSearches: 10, DailyMessages: 0},
 	}
 	for i := range plans {
@@ -130,5 +133,5 @@ func seedPlans(ctx context.Context, pool *pgxpool.Pool) {
 			log.Fatalf("seed plan %s: %v", plans[i].Code, err)
 		}
 	}
-	log.Printf("plans: demo (200k tok, gratis), pro (2jt tok/seat, Rp275rb)")
+	log.Printf("plans: demo (30k/sesi, 80k/mgg, 200k/bln, gratis), pro (300k/sesi, 800k/mgg, 2jt/bln per seat, Rp275rb)")
 }
