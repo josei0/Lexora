@@ -48,7 +48,7 @@ export default function BillingPage() {
     listInvoices()
       .then(setInvoices)
       .catch(e => setErr(e instanceof ApiError ? e.message : 'gagal memuat tagihan'))
-    // redirect balik dari Xendit (?paid=1): konfirmasi + bersihkan query.
+    // redirect balik dari gateway (?paid=1): konfirmasi + bersihkan query.
     // listInvoices() di atas sudah refresh status; SubscriptionBanner refresh quota per-navigasi.
     if (new URLSearchParams(window.location.search).get('paid') === '1') {
       setJustPaid(true)

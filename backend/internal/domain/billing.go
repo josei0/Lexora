@@ -29,7 +29,9 @@ type Plan struct {
 	// "AI High"/"AI Normal" saja. Ganti mesin = ganti env, bukan janji marketing.
 	Model             string `json:"-"`
 	PriceIDR          int64  `json:"price_idr"`
-	MonthlyTokenLimit int64  `json:"monthly_token_limit"` // per seat; 0 = unlimited
+	MonthlyTokenLimit int64  `json:"monthly_token_limit"` // per seat; 0 = window nonaktif
+	SessionTokenLimit int64  `json:"session_token_limit"` // per seat, window 5-jam; 0 = nonaktif (update8)
+	WeeklyTokenLimit  int64  `json:"weekly_token_limit"`  // per seat, window mingguan; 0 = nonaktif (update8)
 	IsActive          bool   `json:"is_active"`
 	WebSearchEnabled  bool   `json:"web_search_enabled"`
 	DailyWebSearches  int    `json:"daily_web_searches"` // 0 = mati
@@ -46,6 +48,10 @@ const (
 	GraceDays = 7
 )
 
+// SessionWindow: durasi window session gaya Claude (update8). Idle lebih lama =
+// session baru saat pesan berikutnya.
+const SessionWindow = 5 * time.Hour
+
 type Subscription struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
@@ -53,6 +59,8 @@ type Subscription struct {
 	Seats          int       `json:"seats"`
 	// nil = tanpa masa aktif (Demo / langganan lama) -> selalu active
 	CurrentPeriodEnd *time.Time `json:"current_period_end,omitempty"`
+	// window session 5-jam (update8): kapan session sekarang mulai. nil = belum ada.
+	SessionStartedAt *time.Time `json:"-"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 }
@@ -92,6 +100,8 @@ type PlanRepository interface {
 type SubscriptionRepository interface {
 	ByOrg(ctx context.Context, orgID uuid.UUID) (*SubscriptionView, error)
 	Upsert(ctx context.Context, s *Subscription) error
+	// mulai window session 5-jam baru (update8): dipanggil saat pesan pertama / pasca-idle
+	SetSessionStarted(ctx context.Context, orgID uuid.UUID, at time.Time) error
 }
 
 type PromptRepository interface {
@@ -118,9 +128,9 @@ type UsageRepository interface {
 
 // paket top-up: harga + token dihitung server, tidak pernah dari FE
 type TopupPackage struct {
-	Code      string
-	Tokens    int64
-	PriceIDR  int64
+	Code       string
+	Tokens     int64
+	PriceIDR   int64
 	LabelShort string // "500 ribu token"
 }
 

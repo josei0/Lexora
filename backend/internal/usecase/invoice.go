@@ -24,27 +24,33 @@ func (u *Invoice) SetTopup(subs domain.SubscriptionRepository, r domain.TopupRep
 	u.subs, u.topups = subs, r
 }
 
-// SetGateway: aktifkan pembuatan checkout Xendit. Nil = mode manual lama.
+// SetGateway: aktifkan pembuatan checkout (Mayar). Nil = mode manual lama.
 func (u *Invoice) SetGateway(g payment.Gateway) { u.pay = g }
+
+// payer: identitas pembayar (org_admin). Mayar WAJIB name+email non-kosong.
+type payer struct{ email, name string }
+
+const providerMayar = "mayar"
 
 // createCheckout: best-effort. Gateway nil / gagal -> invoice tetap ada tanpa URL
 // (user klik bayar lagi nanti). Tidak pernah menggagalkan pembuatan invoice.
-func (u *Invoice) createCheckout(ctx context.Context, inv *domain.Invoice, payerEmail string) {
+func (u *Invoice) createCheckout(ctx context.Context, inv *domain.Invoice, p payer) {
 	if u.pay == nil || inv.Status != domain.InvoicePending {
 		return
 	}
 	c, err := u.pay.CreateInvoice(ctx, payment.Invoice{
 		ExternalID:  inv.ID.String(),
 		AmountIDR:   inv.AmountIDR,
-		PayerEmail:  payerEmail,
+		PayerEmail:  p.email,
+		PayerName:   p.name,
 		Description: describeInvoice(inv),
 	})
 	if err != nil {
 		return // invoice tetap pending tanpa URL; nyusul saat bayar ulang
 	}
-	if err := u.repo.SetProvider(ctx, inv.ID, "xendit", c.ProviderID, c.CheckoutURL); err == nil {
-		xendit := "xendit"
-		inv.Provider, inv.ProviderID, inv.CheckoutURL = &xendit, &c.ProviderID, &c.CheckoutURL
+	if err := u.repo.SetProvider(ctx, inv.ID, providerMayar, c.ProviderID, c.CheckoutURL); err == nil {
+		prov := providerMayar
+		inv.Provider, inv.ProviderID, inv.CheckoutURL = &prov, &c.ProviderID, &c.CheckoutURL
 	}
 }
 
@@ -83,7 +89,10 @@ func (u *Invoice) CreateRenewals(ctx context.Context, now time.Time) (int, error
 		} else if err != nil {
 			return n, err
 		}
-		u.createCheckout(ctx, inv, "") // best-effort checkout URL
+		// ponytail: renewal (ticker) tak punya identity payer. Mayar wajib email,
+		// jadi checkout tak dibuat di sini — invoice terbit tanpa URL, org_admin
+		// buka halaman Tagihan -> klik bayar (jalur itu punya email). Renewal
+		// otomatis penuh = Gelombang B (subscription auto-charge).
 		n++
 	}
 	return n, nil
@@ -95,7 +104,8 @@ func (u *Invoice) ListByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.Invo
 
 // buat invoice top-up pending. Harga + token dari paket (server), tak pernah dari FE.
 // plan_id diambil dari subscription org; period_* tidak bermakna (diisi now, kolom NOT NULL).
-func (u *Invoice) CreateTopup(ctx context.Context, orgID uuid.UUID, code string, now time.Time) (*domain.Invoice, error) {
+// payerEmail/payerName = org_admin (dari JWT) — WAJIB untuk Mayar bikin checkout.
+func (u *Invoice) CreateTopup(ctx context.Context, orgID uuid.UUID, code, payerEmail, payerName string, now time.Time) (*domain.Invoice, error) {
 	pkg, ok := domain.TopupPackages[code]
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -118,12 +128,17 @@ func (u *Invoice) CreateTopup(ctx context.Context, orgID uuid.UUID, code string,
 	if err := u.repo.Create(ctx, inv); err != nil {
 		return nil, err // ErrConflict kalau sudah ada pending -> caller map 409
 	}
-	u.createCheckout(ctx, inv, "") // best-effort; isi checkout_url kalau gateway aktif
+	u.createCheckout(ctx, inv, payer{email: payerEmail, name: payerName}) // best-effort
 	return inv, nil
 }
 
 func (u *Invoice) ByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
 	return u.repo.ByID(ctx, id)
+}
+
+// ByProviderID: korelasi webhook gateway -> invoice kita (update7 F2).
+func (u *Invoice) ByProviderID(ctx context.Context, providerID string) (*domain.Invoice, error) {
+	return u.repo.ByProviderID(ctx, providerID)
 }
 
 // tandai lunas + extend masa aktif (subscription) atau insert topup row.

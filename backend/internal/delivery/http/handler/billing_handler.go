@@ -95,7 +95,23 @@ func (a *BillingAPI) quota(w http.ResponseWriter, r *http.Request) {
 		"overflow":  q.Overflow,
 		"tier":      tier, // label saja: "high"/"normal", bukan nama model
 		"status":    q.Status,
+		"windows":   windowsJSON(q.Windows),
 	})
+}
+
+// breakdown per window (update8): session/weekly/monthly, limit 0 = nonaktif
+func windowsJSON(ws []usecase.WindowUsage) []map[string]any {
+	out := make([]map[string]any, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, map[string]any{
+			"kind":      string(w.Kind),
+			"limit":     w.Limit,
+			"used":      w.Used,
+			"remaining": w.Remaining(),
+			"reset_at":  w.ResetAt.Format(time.RFC3339),
+		})
+	}
+	return out
 }
 
 // GET /plans

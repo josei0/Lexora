@@ -18,7 +18,7 @@ func (f *fakeUsageSrc) ModelTokens(context.Context) ([]domain.ModelUsage, error)
 func TestEstimateSubtractsCost(t *testing.T) {
 	src := &fakeUsageSrc{rows: []domain.ModelUsage{
 		{Model: "maia/claude-sonnet-4-5", InputTokens: 1_000_000, OutputTokens: 1_000_000}, // 18.0
-		{Model: "anthropic/claude-haiku-4-5", InputTokens: 500_000, OutputTokens: 0},        // 0.4
+		{Model: "anthropic/claude-haiku-4-5", InputTokens: 500_000, OutputTokens: 0},        // 0.5
 	}}
 	est := NewBalanceEstimator(src, 100.0) // topup $100
 
@@ -26,9 +26,9 @@ func TestEstimateSubtractsCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 100 - (18.0 + 0.4) = 81.6
-	if math.Abs(bal-81.6) > 1e-9 {
-		t.Errorf("estimasi = %v, mau 81.6", bal)
+	// 100 - (18.0 + 0.5) = 81.5
+	if math.Abs(bal-81.5) > 1e-9 {
+		t.Errorf("estimasi = %v, mau 81.5", bal)
 	}
 }
 

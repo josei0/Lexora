@@ -62,4 +62,6 @@ type InvoiceRepository interface {
 	MarkPaid(ctx context.Context, id uuid.UUID, at time.Time) (*Invoice, bool, error)
 	// simpan hasil gateway (update6 §3.3): provider + id gateway + URL checkout
 	SetProvider(ctx context.Context, id uuid.UUID, provider, providerID, checkoutURL string) error
+	// korelasi webhook->invoice via id transaksi gateway (update7 F2)
+	ByProviderID(ctx context.Context, providerID string) (*Invoice, error)
 }

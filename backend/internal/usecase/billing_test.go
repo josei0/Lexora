@@ -9,7 +9,10 @@ import (
 	"github.com/lexora/backend/internal/domain"
 )
 
-type fakeSubs struct{ sub *domain.SubscriptionView }
+type fakeSubs struct {
+	sub          *domain.SubscriptionView
+	sessionSetTo *time.Time // rekam SetSessionStarted (update8)
+}
 
 func (f *fakeSubs) ByOrg(context.Context, uuid.UUID) (*domain.SubscriptionView, error) {
 	if f.sub == nil {
@@ -18,6 +21,13 @@ func (f *fakeSubs) ByOrg(context.Context, uuid.UUID) (*domain.SubscriptionView, 
 	return f.sub, nil
 }
 func (f *fakeSubs) Upsert(context.Context, *domain.Subscription) error { return nil }
+func (f *fakeSubs) SetSessionStarted(_ context.Context, _ uuid.UUID, at time.Time) error {
+	f.sessionSetTo = &at
+	if f.sub != nil {
+		f.sub.SessionStartedAt = &at // cerminkan ke state (spt DB)
+	}
+	return nil
+}
 
 type fakeUsage struct {
 	tokens  int64

@@ -68,6 +68,9 @@ type AskMeta struct {
 	Degraded   bool   // jatah High habis, jawaban via Normal
 	WebUsed    bool   // hasil web ikut jadi konteks
 	WebSkipped string // alasan web search tidak jalan (kuota/plan/gagal), "" = tidak diminta
+
+	// detail window yang memblokir (update8 F3) — terisi hanya saat error ErrQuotaExceeded
+	Blocked *WindowUsage
 }
 
 func (r *RAG) SetWebSearch(p websearch.Provider, log domain.WebSearchRepository) {
@@ -110,11 +113,21 @@ func (r *RAG) gate(ctx context.Context, orgID uuid.UUID) (domain.LLM, Quota, Ask
 		llm = r.llmNormal
 	}
 	meta := AskMeta{Soft: q.Soft}
+	// update8: window manapun mentok (session/weekly/monthly) -> BLOK, bukan degrade.
+	// Limit = limit; user tunggu reset atau beli saldo PAYG. Degraded tak pernah di-set
+	// lagi (field dipertahankan agar handler/FE lama tak putus).
 	if q.Hard {
-		if llm == r.llmNormal {
-			return nil, q, meta, domain.ErrQuotaExceeded
+		// yang ditampilkan = window hard dengan reset terdekat (paling cepat longgar lagi)
+		for i := range q.Windows {
+			w := &q.Windows[i]
+			if !w.Hard() {
+				continue
+			}
+			if meta.Blocked == nil || w.ResetAt.Before(meta.Blocked.ResetAt) {
+				meta.Blocked = w
+			}
 		}
-		llm, meta.Degraded = r.llmNormal, true
+		return nil, q, meta, domain.ErrQuotaExceeded
 	}
 	return llm, q, meta, nil
 }

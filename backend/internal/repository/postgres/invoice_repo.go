@@ -41,6 +41,11 @@ func (r *InvoiceRepo) ByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, 
 	return scanInvoice(r.db.QueryRow(ctx, invoiceCols+` where id = $1`, id))
 }
 
+// korelasi webhook: cari invoice by id transaksi gateway (provider_id).
+func (r *InvoiceRepo) ByProviderID(ctx context.Context, providerID string) (*domain.Invoice, error) {
+	return scanInvoice(r.db.QueryRow(ctx, invoiceCols+` where provider_id = $1`, providerID))
+}
+
 func (r *InvoiceRepo) ListByOrg(ctx context.Context, orgID uuid.UUID) ([]domain.Invoice, error) {
 	rows, err := r.db.Query(ctx, invoiceCols+` where organization_id = $1 order by created_at desc`, orgID)
 	if err != nil {

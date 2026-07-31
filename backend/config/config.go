@@ -51,10 +51,10 @@ type Config struct {
 	MaiaBalanceThreshold float64 // USD; alert kalau estimasi saldo di bawah ini
 	MaiaTopupTotalUSD    float64 // total top-up manual Maia (basis estimasi)
 
-	// Xendit (update6 §A). Secret kosong = mode manual (tak buat checkout).
-	XenditSecretKey     string
-	XenditCallbackToken string // verifikasi webhook (Fase 18)
-	XenditSuccessURL    string // redirect setelah bayar
+	// Mayar (update7) — payment gateway aktif. API key kosong = mode manual (tak buat checkout).
+	MayarAPIKey     string
+	MayarBaseURL    string // https://api.mayar.id (prod) / api.mayar.club (sandbox)
+	MayarSuccessURL string // redirect setelah bayar
 }
 
 func Load() (*Config, error) {
@@ -91,9 +91,9 @@ func Load() (*Config, error) {
 	c.CookieSecure = env("COOKIE_SECURE", "false") == "true"
 	c.MaiaBalanceThreshold = envFloat("MAIA_BALANCE_THRESHOLD", 0)
 	c.MaiaTopupTotalUSD = envFloat("MAIA_TOPUP_TOTAL_USD", 0)
-	c.XenditSecretKey = env("XENDIT_SECRET_KEY", "")
-	c.XenditCallbackToken = env("XENDIT_CALLBACK_TOKEN", "")
-	c.XenditSuccessURL = env("XENDIT_SUCCESS_URL", "")
+	c.MayarAPIKey = env("MAYAR_API_KEY", "")
+	c.MayarBaseURL = env("MAYAR_BASE_URL", "https://api.mayar.id") // sandbox: https://api.mayar.club
+	c.MayarSuccessURL = env("MAYAR_SUCCESS_URL", "")
 
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL required")

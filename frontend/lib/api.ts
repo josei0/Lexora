@@ -240,7 +240,7 @@ export type Invoice = {
   period_start: string
   period_end: string
   status: 'pending' | 'paid' | 'expired' | 'void'
-  checkout_url?: string // URL bayar Xendit (kalau gateway aktif)
+  checkout_url?: string // URL bayar gateway (Mayar; kalau gateway aktif)
   paid_at?: string
   created_at: string
 }
@@ -443,11 +443,18 @@ export type QuotaFlags = { soft?: boolean; degraded?: boolean }
 // skipped: 'plan' | 'quota' | 'failed'
 export type WebFlags = { used?: boolean; skipped?: string }
 
+// detail blok kuota (update8 F3): window mana, kapan reset, paket top-up yang bisa dibeli
+export type QuotaBlock = {
+  window: 'session' | 'weekly' | 'monthly'
+  reset_at: string
+  packages: { code: string; tokens: number; price_idr: number; label: string }[]
+}
+
 type StreamHandlers = {
   onToken: (token: string) => void
   onStatus?: (status: string) => void
   onDone: (citations: Citation[], messageId: string, quota?: QuotaFlags, web?: WebFlags) => void
-  onError: (message: string) => void
+  onError: (message: string, block?: QuotaBlock) => void
 }
 
 // SSE lewat fetch + ReadableStream (EventSource tidak bisa kirim bearer)
@@ -496,7 +503,14 @@ export async function askStream(
       if (!line.startsWith('data:')) continue
       try {
         const evt = JSON.parse(line.slice(5).trim())
-        if (evt.error) h.onError(evt.error)
+        if (evt.error) {
+          // quota_exceeded membawa detail window+reset+paket (update8 F3)
+          const block: QuotaBlock | undefined =
+            evt.code === 'quota_exceeded' && evt.window
+              ? { window: evt.window, reset_at: evt.reset_at, packages: evt.packages ?? [] }
+              : undefined
+          h.onError(evt.error, block)
+        }
         else if (evt.done) h.onDone(evt.citations ?? [], evt.message_id, evt.quota, evt.web)
         else if (evt.status) h.onStatus?.(evt.status)
         else if (evt.token) h.onToken(evt.token)
@@ -548,6 +562,14 @@ export type DashboardStats = {
 
 export type SubStatus = 'active' | 'past_due' | 'expired'
 
+export type QuotaWindow = {
+  kind: 'session' | 'weekly' | 'monthly'
+  limit: number // 0 = window nonaktif untuk plan ini
+  used: number
+  remaining: number // -1 = nonaktif
+  reset_at: string
+}
+
 export type Quota = {
   limit: number
   used: number
@@ -557,6 +579,7 @@ export type Quota = {
   overflow: boolean
   tier: Tier
   status: SubStatus
+  windows?: QuotaWindow[] // breakdown session/weekly/monthly (update8)
 }
 
 export type PromptData = {

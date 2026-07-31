@@ -10,12 +10,14 @@ import {
   askStream,
   chatMessages,
   createChat,
+  createTopup,
   deleteChat,
   exportChat,
   listChats,
   type Chat,
   type Citation,
   type Message,
+  type QuotaBlock,
 } from '@/lib/api'
 
 export default function ChatPage() {
@@ -27,6 +29,8 @@ export default function ChatPage() {
   const [citations, setCitations] = useState<Citation[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [quotaBlock, setQuotaBlock] = useState<QuotaBlock | null>(null) // paywall di titik limit (update8 F3)
+  const [buying, setBuying] = useState('')
   const [quotaNotice, setQuotaNotice] = useState('')
   const [quotaLow, setQuotaLow] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
@@ -89,6 +93,7 @@ export default function ChatPage() {
     const sent = files
     const label = question || sent.map((f) => `📎 ${f.name}`).join(' ')
     setError('')
+    setQuotaBlock(null)
     setBusy(true)
     setInput('')
     setFiles([])
@@ -137,13 +142,34 @@ export default function ChatPage() {
           )
           setQuotaLow(!!(quota?.degraded || quota?.soft))
         },
-        onError: (msg) => setError(msg),
+        onError: (msg, block) => {
+          setError(msg)
+          setQuotaBlock(block ?? null) // kaya info -> banner "beli saldo lanjut"
+        },
       }, webSearch)
       await loadChats()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'gagal mengirim pertanyaan')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // beli saldo lanjut langsung dari banner limit (update8 F3) — alur top-up Mayar existing
+  async function onBuy(code: string) {
+    setBuying(code)
+    setError('')
+    try {
+      const inv = await createTopup(code as 'small' | 'large')
+      if (inv.checkout_url) {
+        window.location.href = inv.checkout_url
+        return
+      }
+      setError('Tagihan dibuat — selesaikan di halaman Tagihan.')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'gagal membuat top-up')
+    } finally {
+      setBuying('')
     }
   }
 
@@ -216,6 +242,31 @@ export default function ChatPage() {
         </div>
 
         {error && <p className="py-2 text-sm text-destructive">{error}</p>}
+        {quotaBlock && (
+          <div className="mt-2 rounded-lg border border-yellow-300 bg-yellow-50 p-4 text-sm">
+            <p className="font-medium text-yellow-900">
+              Batas {WINDOW_LABEL[quotaBlock.window]} tercapai — reset {resetIn(quotaBlock.reset_at)}.
+            </p>
+            <p className="mt-1 text-yellow-800">
+              Beli saldo lanjut untuk gas terus tanpa nunggu reset:
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {quotaBlock.packages.map((p) => (
+                <Button
+                  key={p.code}
+                  size="sm"
+                  disabled={buying !== ''}
+                  onClick={() => onBuy(p.code)}
+                >
+                  {buying === p.code ? 'Memproses…' : `${p.label} — ${fmtIDR(p.price_idr)}`}
+                </Button>
+              ))}
+              <Button variant="ghost" size="sm" onClick={() => setQuotaBlock(null)}>
+                Nanti saja
+              </Button>
+            </div>
+          </div>
+        )}
         {status && <p className="py-2 text-xs text-muted-foreground">{status}</p>}
         {quotaNotice && (
           <p className="py-2 text-xs text-accent-foreground">
@@ -310,6 +361,25 @@ export default function ChatPage() {
       </section>
     </div>
   )
+}
+
+const WINDOW_LABEL: Record<QuotaBlock['window'], string> = {
+  session: 'sesi 5 jam',
+  weekly: 'mingguan',
+  monthly: 'bulanan',
+}
+
+// "reset dalam 3 hari" / "reset dalam 4 jam" — tanpa lib tanggal
+function resetIn(resetAt: string): string {
+  const ms = new Date(resetAt).getTime() - Date.now()
+  if (ms <= 0) return 'sebentar lagi'
+  const jam = Math.ceil(ms / 3_600_000)
+  if (jam < 24) return `dalam ${jam} jam`
+  return `dalam ${Math.ceil(jam / 24)} hari`
+}
+
+function fmtIDR(n: number): string {
+  return `Rp${n.toLocaleString('id-ID')}`
 }
 
 function MessageBubble({ message }: { message: Message }) {

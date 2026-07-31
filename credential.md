@@ -118,22 +118,23 @@ Semua **opsional**: kosong = fitur mati, sistem tetap jalan (mode lama). Set di 
 | `MAIA_BALANCE_THRESHOLD` | `20` | USD; 0 = ticker mati |
 | `MAIA_TOPUP_TOTAL_USD` | *(total top-up manual Maia)* | basis estimasi |
 
-> ⚠️ Harga per-token di [pkg/pricing/pricing.go](../backend/pkg/pricing/pricing.go) masih **placeholder** (list-price Anthropic). Ganti dgn harga efektif Maia sebelum andalkan angka estimasi.
+> Harga chat (sonnet/haiku/opus) di [pkg/pricing/pricing.go](../backend/pkg/pricing/pricing.go) sudah **diverifikasi dari Model Catalog Maia (2026-07-30)** — haiku $1/$5, sonnet $3/$15, opus-4.5 $5/$25 dst. Embedding & web-search belum ada di katalog → masih placeholder (porsi biaya kecil, ~95% biaya dari chat yg sudah akurat).
 
-### Xendit (payment gateway)
+### Mayar (payment gateway — update7, ganti Xendit)
 | Field | Nilai | Catatan |
 |---|---|---|
-| `XENDIT_SECRET_KEY` | *(dari dashboard Xendit — TODO KYC)* | rahasia server-side |
-| `XENDIT_CALLBACK_TOKEN` | *(set di dashboard webhook)* | verifikasi webhook |
-| `XENDIT_SUCCESS_URL` | `https://app.mindlaw.web.id/app/billing?paid=1` | redirect after-pay |
+| `MAYAR_API_KEY` | *(dari web.mayar.id/api-keys — Read & Write)* | Bearer, rahasia server-side |
+| `MAYAR_BASE_URL` | `https://api.mayar.id` | prod; sandbox: `https://api.mayar.club` |
+| `MAYAR_SUCCESS_URL` | `https://app.mindlaw.web.id/app/billing?paid=1` | redirect after-pay |
 
-> Secret kosong = mode manual (invoice pending tanpa checkout URL, mark-paid manual super_admin).
+> API key kosong = mode manual (invoice pending tanpa checkout URL, mark-paid manual super_admin).
+> ⚠️ **Webhook Mayar TANPA signature** — diverifikasi via RE-FETCH ke API (`GET /hl/v2/invoices/{id}`) pakai API key, bukan token webhook. Set URL webhook di dashboard Mayar (Integration → Webhook) ke `https://api.mindlaw.web.id/webhooks/mayar`, aktifkan event **Purchase** (`payment.received`).
 
-### Runbook deploy Update 6
+### Runbook deploy Update 6+7
 1. Migrasi `000013` jalan otomatis via `make deploy` (atau `migrate ... up`).
 2. **Seed org internal** sekali: `make user-create` / buat org via panel super_admin dgn Name "Mind Law Internal", Slug `mindlaw` (dropdown Assign Akun default cari slug ini).
 3. `CORS_ORIGINS_APP` **wajib** muat `https://mindlaw.web.id,https://app.mindlaw.web.id` (sudah ada di `.env.production`).
-4. Uji Xendit di **test mode** dulu → flip live key setelah KYC lolos.
+4. Set `MAYAR_API_KEY` + daftar URL webhook Mayar (lihat atas). Uji di **sandbox** (`api.mayar.club`) dulu → flip production key.
 
 ---
 

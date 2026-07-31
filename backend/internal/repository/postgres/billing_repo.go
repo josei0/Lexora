@@ -15,10 +15,13 @@ type PlanRepo struct{ db *pgxpool.Pool }
 
 func NewPlanRepo(db *pgxpool.Pool) *PlanRepo { return &PlanRepo{db} }
 
+// kolom plan dipakai bareng di semua SELECT (hindari drift). Urutan = scanPlan.
+const planCols = `id, code, name, model, price_idr, monthly_token_limit,
+	session_token_limit, weekly_token_limit,
+	is_active, web_search_enabled, daily_web_searches, daily_messages`
+
 func (r *PlanRepo) List(ctx context.Context) ([]domain.Plan, error) {
-	rows, err := r.db.Query(ctx, `
-		select id, code, name, model, price_idr, monthly_token_limit, is_active, web_search_enabled, daily_web_searches, daily_messages
-		from plans where is_active = true order by price_idr`)
+	rows, err := r.db.Query(ctx, `select `+planCols+` from plans where is_active = true order by price_idr`)
 	if err != nil {
 		return nil, err
 	}
@@ -35,30 +38,31 @@ func (r *PlanRepo) List(ctx context.Context) ([]domain.Plan, error) {
 }
 
 func (r *PlanRepo) ByCode(ctx context.Context, code string) (*domain.Plan, error) {
-	return scanPlan(r.db.QueryRow(ctx, `
-		select id, code, name, model, price_idr, monthly_token_limit, is_active, web_search_enabled, daily_web_searches, daily_messages
-		from plans where code = $1`, code))
+	return scanPlan(r.db.QueryRow(ctx, `select `+planCols+` from plans where code = $1`, code))
 }
 
 // idempotent seed upsert
 func (r *PlanRepo) Upsert(ctx context.Context, p *domain.Plan) error {
 	return r.db.QueryRow(ctx, `
-		insert into plans (code, name, model, price_idr, monthly_token_limit, is_active, web_search_enabled, daily_web_searches, daily_messages)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		insert into plans (code, name, model, price_idr, monthly_token_limit, session_token_limit, weekly_token_limit, is_active, web_search_enabled, daily_web_searches, daily_messages)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		on conflict (code) do update set
 			name = excluded.name, model = excluded.model, price_idr = excluded.price_idr,
 			web_search_enabled = excluded.web_search_enabled, daily_web_searches = excluded.daily_web_searches,
 			daily_messages = excluded.daily_messages,
-			monthly_token_limit = excluded.monthly_token_limit, is_active = excluded.is_active,
-			updated_at = now()
+			monthly_token_limit = excluded.monthly_token_limit,
+			session_token_limit = excluded.session_token_limit, weekly_token_limit = excluded.weekly_token_limit,
+			is_active = excluded.is_active, updated_at = now()
 		returning id`,
-		p.Code, p.Name, p.Model, p.PriceIDR, p.MonthlyTokenLimit, p.IsActive,
-		p.WebSearchEnabled, p.DailyWebSearches, p.DailyMessages).Scan(&p.ID)
+		p.Code, p.Name, p.Model, p.PriceIDR, p.MonthlyTokenLimit, p.SessionTokenLimit, p.WeeklyTokenLimit,
+		p.IsActive, p.WebSearchEnabled, p.DailyWebSearches, p.DailyMessages).Scan(&p.ID)
 }
 
 func scanPlan(row pgx.Row) (*domain.Plan, error) {
 	var p domain.Plan
-	err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Model, &p.PriceIDR, &p.MonthlyTokenLimit, &p.IsActive, &p.WebSearchEnabled, &p.DailyWebSearches, &p.DailyMessages)
+	err := row.Scan(&p.ID, &p.Code, &p.Name, &p.Model, &p.PriceIDR, &p.MonthlyTokenLimit,
+		&p.SessionTokenLimit, &p.WeeklyTokenLimit,
+		&p.IsActive, &p.WebSearchEnabled, &p.DailyWebSearches, &p.DailyMessages)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -75,12 +79,12 @@ func NewSubscriptionRepo(db *pgxpool.Pool) *SubscriptionRepo { return &Subscript
 func (r *SubscriptionRepo) ByOrg(ctx context.Context, orgID uuid.UUID) (*domain.SubscriptionView, error) {
 	var v domain.SubscriptionView
 	err := r.db.QueryRow(ctx, `
-		select s.id, s.organization_id, s.plan_id, s.seats, s.current_period_end, s.created_at, s.updated_at,
-		       p.id, p.code, p.name, p.model, p.price_idr, p.monthly_token_limit, p.is_active, p.web_search_enabled, p.daily_web_searches, p.daily_messages
+		select s.id, s.organization_id, s.plan_id, s.seats, s.current_period_end, s.session_started_at, s.created_at, s.updated_at,
+		       p.id, p.code, p.name, p.model, p.price_idr, p.monthly_token_limit, p.session_token_limit, p.weekly_token_limit, p.is_active, p.web_search_enabled, p.daily_web_searches, p.daily_messages
 		from subscriptions s join plans p on p.id = s.plan_id
 		where s.organization_id = $1`, orgID).Scan(
-		&v.ID, &v.OrganizationID, &v.PlanID, &v.Seats, &v.CurrentPeriodEnd, &v.CreatedAt, &v.UpdatedAt,
-		&v.Plan.ID, &v.Plan.Code, &v.Plan.Name, &v.Plan.Model, &v.Plan.PriceIDR, &v.Plan.MonthlyTokenLimit, &v.Plan.IsActive, &v.Plan.WebSearchEnabled, &v.Plan.DailyWebSearches, &v.Plan.DailyMessages)
+		&v.ID, &v.OrganizationID, &v.PlanID, &v.Seats, &v.CurrentPeriodEnd, &v.SessionStartedAt, &v.CreatedAt, &v.UpdatedAt,
+		&v.Plan.ID, &v.Plan.Code, &v.Plan.Name, &v.Plan.Model, &v.Plan.PriceIDR, &v.Plan.MonthlyTokenLimit, &v.Plan.SessionTokenLimit, &v.Plan.WeeklyTokenLimit, &v.Plan.IsActive, &v.Plan.WebSearchEnabled, &v.Plan.DailyWebSearches, &v.Plan.DailyMessages)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -88,6 +92,14 @@ func (r *SubscriptionRepo) ByOrg(ctx context.Context, orgID uuid.UUID) (*domain.
 		return nil, err
 	}
 	return &v, nil
+}
+
+// mulai window session baru (update8). Idempoten: dipanggil hanya saat session expired.
+func (r *SubscriptionRepo) SetSessionStarted(ctx context.Context, orgID uuid.UUID, at time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		update subscriptions set session_started_at = $2, updated_at = now()
+		where organization_id = $1`, orgID, at)
+	return err
 }
 
 func (r *SubscriptionRepo) Upsert(ctx context.Context, s *domain.Subscription) error {

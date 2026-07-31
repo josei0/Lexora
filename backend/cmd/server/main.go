@@ -156,8 +156,12 @@ func main() {
 	topupRepo := postgres.NewTopupRepo(pool)
 	billingUC.SetTopup(topupRepo)
 	invoiceUC.SetTopup(subRepo, topupRepo)
-	if cfg.XenditSecretKey != "" { // kosong = mode manual lama
-		invoiceUC.SetGateway(payment.NewXendit(cfg.XenditSecretKey, cfg.XenditSuccessURL))
+	// gateway aktif: Mayar (update7). Kosong = mode manual (invoice pending tanpa checkout URL).
+	// mayarGW disimpan untuk juga jadi verifier webhook (re-fetch) di invoiceAPI.
+	var mayarGW *payment.Mayar
+	if cfg.MayarAPIKey != "" {
+		mayarGW = payment.NewMayar(cfg.MayarAPIKey, cfg.MayarBaseURL, cfg.MayarSuccessURL)
+		invoiceUC.SetGateway(mayarGW)
 	}
 	ragUC.SetBilling(billingUC)
 	ragUC.SetWebSearch(searchProvider, searchRepo)
@@ -186,7 +190,9 @@ func main() {
 	billingAPI := handler.NewBillingAPI(subUC, dashUC, promptUC, exportUC, billingUC, auditUC, cfg.ChatModelNormal)
 	webAPI := handler.NewWebAPI(webUC, auditUC)
 	invoiceAPI := handler.NewInvoiceAPI(invoiceUC, auditUC)
-	invoiceAPI.SetCallbackToken(cfg.XenditCallbackToken) // kosong = webhook nonaktif
+	if mayarGW != nil {
+		invoiceAPI.SetMayarVerifier(mayarGW) // webhook Mayar re-fetch (nil = nonaktif)
+	}
 	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, webAPI, invoiceAPI, signer, adminSigner, cfg.CORSOriginsApp, cfg.CORSOriginsAdmin)
 	server := httpdelivery.NewServer(cfg.Port, router)
 

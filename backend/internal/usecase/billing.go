@@ -31,13 +31,33 @@ func NewBilling(subs domain.SubscriptionRepository, usage domain.UsageRepository
 func (b *Billing) SetTopup(r domain.TopupRepository) { b.topups = r }
 
 type Quota struct {
-	Limit     int64 // 0 = unlimited
-	Used      int64
-	Soft      bool   // >= 80%
-	Hard      bool   // >= 100%
-	Overflow bool         // >= 2x limit: plafon degrade
+	// Limit/Used = window MONTHLY (kompat handler + overflow lama). Multi-window di Windows.
+	Limit    int64 // 0 = unlimited
+	Used     int64
+	Soft     bool         // agregat: >= 80% di SALAH SATU window aktif
+	Hard     bool         // agregat: >= 100% di SALAH SATU window aktif (gaya Claude)
+	Overflow bool         // monthly >= 2x limit: plafon degrade absolut
 	Plan     *domain.Plan // nil = tanpa subscription
 	Status   string       // active | past_due | expired
+
+	// window multi-limit (update8). Kosong = tanpa subscription. Session/Weekly/Monthly.
+	Windows []WindowUsage
+}
+
+// MostConstrained: window aktif dengan sisa token terkecil (untuk pesan "limit X, reset Y").
+// nil kalau tak ada window aktif.
+func (q Quota) MostConstrained() *WindowUsage {
+	var best *WindowUsage
+	for i := range q.Windows {
+		w := &q.Windows[i]
+		if !w.Active() {
+			continue
+		}
+		if best == nil || w.Remaining() < best.Remaining() {
+			best = w
+		}
+	}
+	return best
 }
 
 // awal hari WIB - window kuota harian (search, pesan Demo)
@@ -64,6 +84,17 @@ func monthWindow(now time.Time) (from, to time.Time) {
 	return
 }
 
+// week window [Senin 00:00 WIB minggu ini, Senin depan). Reset kalender (update8 §6).
+func weekWindow(now time.Time) (from, to time.Time) {
+	n := now.In(wib)
+	midnight := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, wib)
+	// Go: Sunday=0..Saturday=6. Mundur ke Senin: Senin=1 -> 0 hari, Minggu=0 -> 6 hari.
+	back := (int(n.Weekday()) + 6) % 7
+	from = midnight.AddDate(0, 0, -back)
+	to = from.AddDate(0, 0, 7)
+	return
+}
+
 func (b *Billing) usage_(ctx context.Context, orgID uuid.UUID, now time.Time) (Quota, error) {
 	sub, err := b.subs.ByOrg(ctx, orgID)
 	if err == domain.ErrNotFound {
@@ -72,33 +103,81 @@ func (b *Billing) usage_(ctx context.Context, orgID uuid.UUID, now time.Time) (Q
 	if err != nil {
 		return Quota{}, err
 	}
-	limit := sub.Plan.MonthlyTokenLimit * int64(sub.Seats)
+	seats := int64(sub.Seats)
 
-	from, to := monthWindow(now)
-	used, err := b.usage.OrgTokens(ctx, orgID, from, to)
-	if err != nil {
-		return Quota{}, err
+	// PAYG lintas-window (update8 §2.3): saldo top-up bulan ini angkat plafon SEMUA
+	// window aktif. Dihitung sekali, ditambahkan ke tiap window.
+	var payg int64
+	if b.topups != nil {
+		mFrom, mTo := monthWindow(now)
+		if payg, err = b.topups.SumTokens(ctx, orgID, mFrom, mTo); err != nil {
+			return Quota{}, err
+		}
 	}
-	// top-up: tambah limit window bulan ini, hangus akhir bulan
-	if limit > 0 && b.topups != nil {
-		extra, err := b.topups.SumTokens(ctx, orgID, from, to)
+
+	// bangun 3 window. limit plan 0 = window nonaktif -> PAYG tak mengaktifkannya.
+	specs := []struct {
+		kind      WindowKind
+		planLimit int64
+	}{
+		{WindowSession, sub.Plan.SessionTokenLimit},
+		{WindowWeekly, sub.Plan.WeeklyTokenLimit},
+		{WindowMonthly, sub.Plan.MonthlyTokenLimit},
+	}
+	windows := make([]WindowUsage, 0, len(specs))
+	for _, s := range specs {
+		base := s.planLimit * seats
+		if base == 0 {
+			// nonaktif: tetap catat used (info), tapi Limit 0 -> tak menggating
+			windows = append(windows, WindowUsage{Kind: s.kind, Limit: 0})
+			continue
+		}
+		from, reset := windowBounds(s.kind, now, sub.SessionStartedAt)
+		used, err := b.usage.OrgTokens(ctx, orgID, from, now)
 		if err != nil {
 			return Quota{}, err
 		}
-		limit += extra
+		windows = append(windows, WindowUsage{
+			Kind: s.kind, Limit: base + payg, Used: used, ResetAt: reset,
+		})
 	}
-	q := Quota{Limit: limit, Used: used, Plan: &sub.Plan, Status: sub.StatusAt(now)}
-	if limit > 0 {
-		q.Soft = used >= int64(float64(limit)*softThreshold)
-		q.Hard = used >= limit
-		q.Overflow = used >= limit*overflowFactor
+
+	q := Quota{Plan: &sub.Plan, Status: sub.StatusAt(now), Windows: windows}
+	// agregat: soft/hard = true kalau SALAH SATU window aktif mentok (gaya Claude).
+	for i := range windows {
+		if windows[i].Soft() {
+			q.Soft = true
+		}
+		if windows[i].Hard() {
+			q.Hard = true
+		}
+	}
+	// kompat lama: Limit/Used/Overflow = window monthly (dipakai handler + degrade absolut).
+	if m := findWindow(windows, WindowMonthly); m != nil && m.Active() {
+		q.Limit, q.Used = m.Limit, m.Used
+		q.Overflow = m.Used >= m.Limit*overflowFactor
 	}
 	return q, nil
 }
 
-// dipanggil sebelum Ask. Hard TIDAK lagi error di sini — kebijakan degrade/blok milik RAG
-// (plan High degrade ke Normal; plan Normal blok). Overflow = plafon absolut, tetap error.
+func findWindow(ws []WindowUsage, kind WindowKind) *WindowUsage {
+	for i := range ws {
+		if ws[i].Kind == kind {
+			return &ws[i]
+		}
+	}
+	return nil
+}
+
+// dipanggil sebelum Ask. Hard TIDAK error di sini — RAG yang memblokir (update8:
+// window manapun mentok = blok). Overflow = plafon absolut, tetap error di sini.
+// Efek samping disengaja: memulai window session baru kalau session lama sudah lewat.
 func (b *Billing) Check(ctx context.Context, orgID uuid.UUID, now time.Time) (Quota, error) {
+	// session window (update8): pesan pertama / pasca-idle >5j -> mulai session baru.
+	// Dilakukan SEBELUM usage_ supaya perhitungan pakai window yang benar.
+	if err := b.rollSession(ctx, orgID, now); err != nil {
+		return Quota{}, err
+	}
 	q, err := b.usage_(ctx, orgID, now)
 	if err != nil {
 		return q, err
@@ -110,6 +189,25 @@ func (b *Billing) Check(ctx context.Context, orgID uuid.UUID, now time.Time) (Qu
 		return q, domain.ErrQuotaExceeded
 	}
 	return q, nil
+}
+
+// rollSession: mulai window session baru kalau belum ada / sudah lewat 5 jam.
+// No-op kalau plan tak pakai window session (SessionTokenLimit 0) — hemat write.
+func (b *Billing) rollSession(ctx context.Context, orgID uuid.UUID, now time.Time) error {
+	sub, err := b.subs.ByOrg(ctx, orgID)
+	if err == domain.ErrNotFound {
+		return nil // tanpa subscription: tak ada window
+	}
+	if err != nil {
+		return err
+	}
+	if sub.Plan.SessionTokenLimit <= 0 {
+		return nil // window session nonaktif untuk plan ini
+	}
+	if !sessionExpired(now, sub.SessionStartedAt) {
+		return nil // session masih jalan
+	}
+	return b.subs.SetSessionStarted(ctx, orgID, now)
 }
 
 // gate akses fitur menulis (upload, export): hanya masa aktif, bukan kuota token.

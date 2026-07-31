@@ -86,6 +86,16 @@ func (f *fakeInvoiceRepo) SetProvider(_ context.Context, id uuid.UUID, provider,
 	return nil
 }
 
+func (f *fakeInvoiceRepo) ByProviderID(_ context.Context, providerID string) (*domain.Invoice, error) {
+	for _, inv := range f.invoices {
+		if inv.ProviderID != nil && *inv.ProviderID == providerID {
+			cp := *inv
+			return &cp, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
 func (f *fakeInvoiceRepo) MarkPaid(_ context.Context, id uuid.UUID, at time.Time) (*domain.Invoice, bool, error) {
 	inv, ok := f.invoices[id]
 	if !ok {
@@ -265,7 +275,7 @@ func TestCreateTopupCallsGateway(t *testing.T) {
 	gw := &fakeGateway{}
 	uc.SetGateway(gw)
 
-	inv, err := uc.CreateTopup(context.Background(), uuid.New(), "small", time.Now())
+	inv, err := uc.CreateTopup(context.Background(), uuid.New(), "small", "admin@test.id", "Admin Test", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +299,7 @@ func TestCreateTopupGatewayFailSoft(t *testing.T) {
 	uc.SetTopup(&fakeSubs{sub: subView(1000, 1)}, &fakeTopups{})
 	uc.SetGateway(&fakeGateway{fail: true})
 
-	inv, err := uc.CreateTopup(context.Background(), uuid.New(), "small", time.Now())
+	inv, err := uc.CreateTopup(context.Background(), uuid.New(), "small", "admin@test.id", "Admin Test", time.Now())
 	if err != nil {
 		t.Fatalf("gateway gagal TIDAK boleh menggagalkan invoice: %v", err)
 	}
@@ -305,7 +315,7 @@ func TestCreateTopupGatewayFailSoft(t *testing.T) {
 func TestCreateTopupNoGateway(t *testing.T) {
 	uc := NewInvoice(newFakeInvoiceRepo())
 	uc.SetTopup(&fakeSubs{sub: subView(1000, 1)}, &fakeTopups{})
-	inv, err := uc.CreateTopup(context.Background(), uuid.New(), "small", time.Now())
+	inv, err := uc.CreateTopup(context.Background(), uuid.New(), "small", "admin@test.id", "Admin Test", time.Now())
 	if err != nil || inv.CheckoutURL != nil {
 		t.Fatalf("mode manual: invoice tanpa URL, tanpa error; err=%v url=%v", err, inv.CheckoutURL)
 	}

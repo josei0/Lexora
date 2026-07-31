@@ -213,7 +213,7 @@ func (a *ChatAPI) ask(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("ask failed: %v", err)
-		send(map[string]string{"error": sseError(err)})
+		send(sseErrorEvent(err, meta))
 		return
 	}
 	done := map[string]any{"done": true, "message_id": msg.ID, "citations": toCitationsJSON(msg.Citations)}
@@ -262,6 +262,23 @@ func parseAsk(r *http.Request) (string, []domain.Attachment, bool, error) {
 	return body.Content, nil, body.WebSearch, nil
 }
 
+// event error SSE. Quota = objek kaya (update8 F3): window mana + kapan reset + paket
+// top-up yang bisa dibeli. Error lain = {error: pesan} sederhana.
+func sseErrorEvent(err error, meta usecase.AskMeta) map[string]any {
+	msg := sseError(err)
+	if errors.Is(err, domain.ErrQuotaExceeded) && meta.Blocked != nil {
+		b := meta.Blocked
+		return map[string]any{
+			"error":    msg,
+			"code":     "quota_exceeded",
+			"window":   string(b.Kind),
+			"reset_at": b.ResetAt.Format(time.RFC3339),
+			"packages": topupPackagesJSON(),
+		}
+	}
+	return map[string]any{"error": msg}
+}
+
 func sseError(err error) string {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
@@ -269,7 +286,7 @@ func sseError(err error) string {
 	case errors.Is(err, domain.ErrInvalidUpload):
 		return "pertanyaan kosong"
 	case errors.Is(err, domain.ErrQuotaExceeded):
-		return "kuota bulan ini habis, hubungi admin untuk menambah kuota"
+		return "kuota habis"
 	case errors.Is(err, domain.ErrSubExpired):
 		return "masa aktif langganan berakhir, perpanjang untuk melanjutkan"
 	case errors.Is(err, domain.ErrDailyCapReached):
@@ -277,6 +294,18 @@ func sseError(err error) string {
 	default:
 		return "gagal memproses pertanyaan"
 	}
+}
+
+// paket top-up dari domain (harga dihitung server, tidak pernah dari FE)
+func topupPackagesJSON() []map[string]any {
+	out := make([]map[string]any, 0, len(domain.TopupPackages))
+	for _, code := range []string{"small", "large"} { // urutan stabil
+		p := domain.TopupPackages[code]
+		out = append(out, map[string]any{
+			"code": p.Code, "tokens": p.Tokens, "price_idr": p.PriceIDR, "label": p.LabelShort,
+		})
+	}
+	return out
 }
 
 func orgIdentity(w http.ResponseWriter, r *http.Request) (domain.Identity, bool) {

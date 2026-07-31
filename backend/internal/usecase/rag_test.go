@@ -158,18 +158,15 @@ func TestSoftQuotaFlagged(t *testing.T) {
 	}
 }
 
-// U2: plan High tembus 100% -> jawaban tetap keluar lewat Normal
-func TestHighDegradesToNormalAtLimit(t *testing.T) {
+// update8: plan High tembus 100% -> BLOK (bukan degrade lagi).
+// Limit = limit; user tunggu reset atau beli saldo PAYG (gaya Claude).
+func TestHighBlockedAtLimit(t *testing.T) {
 	rag, chat, high, normal := setupTiered(modelHigh, 1000, 1000)
-	msg, meta, err := ask(t, rag, chat)
-	if err != nil {
-		t.Fatalf("degrade tidak boleh error: %v", err)
+	if _, _, err := ask(t, rag, chat); err != domain.ErrQuotaExceeded {
+		t.Fatalf("High mentok harus diblok, dapat %v", err)
 	}
-	if !meta.Degraded || *msg.Model != modelNormal {
-		t.Fatalf("mau degrade ke Normal, dapat meta=%+v model=%q", meta, *msg.Model)
-	}
-	if high.calls != 0 || normal.calls != 1 {
-		t.Fatalf("model High masih dipakai setelah jatah habis (high=%d normal=%d)", high.calls, normal.calls)
+	if high.calls != 0 || normal.calls != 0 {
+		t.Fatalf("tak boleh panggil LLM saat diblok (high=%d normal=%d)", high.calls, normal.calls)
 	}
 }
 
@@ -186,6 +183,24 @@ func TestOverflowBlocksEvenDegraded(t *testing.T) {
 	rag, chat, _, _ := setupTiered(modelHigh, 1000, 2000)
 	if _, _, err := ask(t, rag, chat); err != domain.ErrQuotaExceeded {
 		t.Fatalf("overflow harus diblok, dapat %v", err)
+	}
+}
+
+// update8 F3: window yang memblokir ikut di meta (handler kirim ke FE sebagai banner PAYG)
+func TestBlockedWindowInMeta(t *testing.T) {
+	rag, chat, _, _ := setupTiered(modelHigh, 1000, 1000)
+	_, meta, err := ask(t, rag, chat)
+	if err != domain.ErrQuotaExceeded {
+		t.Fatalf("harus diblok, dapat %v", err)
+	}
+	if meta.Blocked == nil {
+		t.Fatal("meta.Blocked harus terisi saat kuota memblokir")
+	}
+	if meta.Blocked.Kind != WindowMonthly || !meta.Blocked.Hard() {
+		t.Fatalf("window blok salah: %+v", meta.Blocked)
+	}
+	if meta.Blocked.ResetAt.IsZero() {
+		t.Fatal("reset_at tak boleh kosong — FE butuh untuk pesan 'reset dalam X'")
 	}
 }
 

@@ -26,7 +26,7 @@ const (
 	AuditPromptUpdate   = "prompt.update"
 	AuditRegister       = "auth.register"   // self-serve register (update6)
 	AuditGoogleAuth     = "auth.google"     // login/register via Google (update6)
-	AuditWebhookPaid    = "webhook.paid"    // pelunasan via webhook Xendit (update6)
+	AuditWebhookPaid    = "webhook.paid"    // pelunasan via webhook gateway (Mayar)
 )
 
 // satu baris audit. Tanpa kolom bebas isi — hindari kebocoran data sensitif.
