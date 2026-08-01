@@ -66,7 +66,7 @@ func maiaBalanceWatch(ctx context.Context, est *usecase.BalanceEstimator, m *mai
 // ticker harian: terbitkan invoice renewal H-7 + retensi web_searches 90 hari.
 // Satu ticker untuk semua job harian (update5 §8). Recovery: jalan sekali saat start.
 // ponytail: pindah ke job terjadwal kalau nanti ada banyak job
-func dailyJobs(ctx context.Context, invUC *usecase.Invoice, searches *postgres.WebSearchRepo) {
+func dailyJobs(ctx context.Context, invUC *usecase.Invoice, dunUC *usecase.Dunning, searches *postgres.WebSearchRepo) {
 	const retention = 90 * 24 * time.Hour
 	t := time.NewTicker(24 * time.Hour)
 	defer t.Stop()
@@ -75,6 +75,12 @@ func dailyJobs(ctx context.Context, invUC *usecase.Invoice, searches *postgres.W
 			log.Printf("invoice renewal: %v", err)
 		} else if n > 0 {
 			log.Printf("invoice renewal: %d invoice terbit", n)
+		}
+		// update9-A: reminder dunning H-7/H-1/H+3 (no-op kalau SMTP kosong)
+		if n, err := dunUC.SendDue(ctx, time.Now()); err != nil {
+			log.Printf("dunning reminder: %v", err)
+		} else if n > 0 {
+			log.Printf("dunning reminder: %d email terkirim", n)
 		}
 		if n, err := searches.DeleteOlderThan(ctx, time.Now().Add(-retention)); err != nil {
 			log.Printf("retensi web_searches: %v", err)
@@ -168,12 +174,15 @@ func main() {
 	docUC.SetBilling(billingUC)
 	webUC.SetBilling(billingUC)
 	webUC.SetWebSearchRepo(searchRepo)
-	go dailyJobs(ctx, invoiceUC, searchRepo)
 	ragUC.SetPrompts(promptRepo)
 	ragUC.SetExtractor(extract.New(false)) // lampiran chat sinkron: tanpa OCR
 	mail := mailer.New(cfg.SMTPUser, cfg.SMTPAppPassword)
 	orgUC.SetSeatGuard(subUC)
 	orgUC.SetMailer(mail, cfg.AppBaseURL)
+	orgUC.SetRefreshRevoker(refreshRepo) // update9-S: nonaktif -> cabut sesi
+	// update9-A: dunning reminder ticker (gate pakai mail.Enabled, tanpa env baru)
+	dunUC := usecase.NewDunning(invoiceRepo, mail, cfg.AppBaseURL)
+	go dailyJobs(ctx, invoiceUC, dunUC, searchRepo)
 	authUC.SetGoogle(googleVerifier{oauth.NewGoogle(cfg.GoogleClientID)}, orgUC)
 
 	// alert saldo Maia: aktif kalau threshold di-set (update6 §4.3)
@@ -193,7 +202,23 @@ func main() {
 	if mayarGW != nil {
 		invoiceAPI.SetMayarVerifier(mayarGW) // webhook Mayar re-fetch (nil = nonaktif)
 	}
-	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, webAPI, invoiceAPI, signer, adminSigner, cfg.CORSOriginsApp, cfg.CORSOriginsAdmin)
+
+	// update9-B: allowlist domain web-search dari DB, env fallback bila kosong.
+	// boot: DB -> guard+search; kosong = tetap pakai cfg.WebSearchDomains (env).
+	wsDomainRepo := postgres.NewWebDomainRepo(pool)
+	wsDomainUC := usecase.NewWebDomain(wsDomainRepo, guard, searchProvider)
+	if list, err := wsDomainRepo.List(ctx); err != nil {
+		log.Printf("load web-domains: %v", err)
+	} else if len(list) > 0 {
+		if err := wsDomainUC.Refresh(ctx); err != nil {
+			log.Printf("refresh web-domains: %v", err)
+		}
+	}
+	webDomainAPI := handler.NewWebDomainAPI(wsDomainUC)
+
+	// update9-S (S4): jahit final - wsdomains (B) + cspNonce + adminHost (S).
+	router := httpdelivery.NewRouter(api, chatAPI, billingAPI, webAPI, invoiceAPI, webDomainAPI,
+		signer, adminSigner, cfg.CORSOriginsApp, cfg.CORSOriginsAdmin, true, cfg.AdminAPIHost)
 	server := httpdelivery.NewServer(cfg.Port, router)
 
 	go func() {

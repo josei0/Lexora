@@ -1,14 +1,43 @@
+# update9-S: HSTS global + isolasi host admin + IP-lock.
+# DNS 4-host + TLS auto + trusted_proxies real-IP = runbook deploy (NEEDS-DEPLOY).
+# Ganti 203.0.113.0/24 dgn IP kantor/VPN sebenarnya sebelum live.
+(hsts) {
+	header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+}
+
+# IP-lock: hanya IP dipercaya boleh ke panel admin. Sisanya 403.
+(adminlock) {
+	@notallowed not remote_ip 203.0.113.0/24 127.0.0.1/32
+	respond @notallowed "forbidden" 403
+}
+
+# app publik
 mindlaw.web.id, app.mindlaw.web.id {
+	import hsts
 	reverse_proxy frontend:3000
 }
 
+# panel admin (FE) - IP-lock
 admin.mindlaw.web.id {
+	import hsts
+	import adminlock
 	# root -> login, path lain (/admin, /admin-login) normal
 	@root path /
 	redir @root /admin-login 302
 	reverse_proxy frontend:3000
 }
 
+# API publik (app)
 api.mindlaw.web.id {
+	import hsts
 	reverse_proxy backend:8080
 }
+
+# API admin - host terpisah + IP-lock. Backend cek ADMIN_API_HOST juga (defense-in-depth).
+admin-api.mindlaw.web.id {
+	import hsts
+	import adminlock
+	reverse_proxy backend:8080
+}
+
+# redir 80 -> 443: Caddy auto-HTTPS sudah lakukan otomatis utk tiap vhost di atas.

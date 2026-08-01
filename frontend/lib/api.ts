@@ -628,6 +628,21 @@ export function setPrompt(key: string, content: string) {
   return api<void>(`/prompts/${key}`, { method: 'PUT', body: JSON.stringify({ content }) })
 }
 
+// allowlist domain web-search (update9-B, super_admin)
+export type WebDomain = { id: string; host: string }
+
+export function listWebDomains() {
+  return api<WebDomain[]>('/admin/web-domains')
+}
+
+export function addWebDomain(host: string) {
+  return api<WebDomain>('/admin/web-domains', { method: 'POST', body: JSON.stringify({ host }) })
+}
+
+export function removeWebDomain(host: string) {
+  return api<void>(`/admin/web-domains/${encodeURIComponent(host)}`, { method: 'DELETE' })
+}
+
 export type AuditLog = {
   id: string
   org_id?: string

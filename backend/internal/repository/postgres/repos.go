@@ -257,6 +257,12 @@ func (r *RefreshRepo) RevokeFamily(ctx context.Context, familyID uuid.UUID) erro
 	return err
 }
 
+// cabut semua sesi user (ganti-pw / nonaktif)
+func (r *RefreshRepo) RevokeAllForUser(ctx context.Context, userID uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null`, userID)
+	return err
+}
+
 // unique violation -> conflict
 func mapErr(err error) error {
 	if err == nil {

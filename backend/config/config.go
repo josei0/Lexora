@@ -55,6 +55,9 @@ type Config struct {
 	MayarAPIKey     string
 	MayarBaseURL    string // https://api.mayar.id (prod) / api.mayar.club (sandbox)
 	MayarSuccessURL string // redirect setelah bayar
+
+	// update9-S: isolasi host admin. Kosong = nonaktif (dev/localhost).
+	AdminAPIHost string
 }
 
 func Load() (*Config, error) {
@@ -94,6 +97,7 @@ func Load() (*Config, error) {
 	c.MayarAPIKey = env("MAYAR_API_KEY", "")
 	c.MayarBaseURL = env("MAYAR_BASE_URL", "https://api.mayar.id") // sandbox: https://api.mayar.club
 	c.MayarSuccessURL = env("MAYAR_SUCCESS_URL", "")
+	c.AdminAPIHost = env("ADMIN_API_HOST", "") // update9-S: kosong = nonaktif
 
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL required")

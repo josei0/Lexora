@@ -19,6 +19,10 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 	})
 }
 
+// API-only CSP: JSON, tak render HTML -> kunci semua. Enforce langsung aman
+// (report-only bertahap cuma perlu di FE/Next). update9-S.
+const apiCSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+
 func SecureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -26,6 +30,9 @@ func SecureHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		// HSTS: 2 tahun + preload. Aman di HTTPS; diabaikan browser via HTTP.
+		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		h.Set("Content-Security-Policy", apiCSP)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -138,6 +145,34 @@ func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
+	}
+	return host
+}
+
+// AdminHostOnly: rute admin cuma dilayani di ADMIN_API_HOST (isolasi fisik).
+// adminHost kosong = nonaktif (dev/localhost). update9-S.
+func AdminHostOnly(adminHost string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if adminHost == "" {
+			return next // dev: tak enforce
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p := r.URL.Path
+			if strings.HasPrefix(p, "/admin/") || strings.HasPrefix(p, "/auth/admin/") {
+				if hostname(r.Host) != adminHost {
+					writeError(w, http.StatusNotFound, "not_found", "not found")
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// hostname: buang port dari Host header.
+func hostname(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
 	}
 	return host
 }

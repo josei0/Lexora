@@ -28,6 +28,8 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       QDRANT_URL: http://qdrant:6333
+      # update9-S: rute /admin/* + /auth/admin/* hanya dilayani di host ini
+      ADMIN_API_HOST: ${ADMIN_API_HOST:-admin-api.mindlaw.web.id}
     volumes:
       - storage:/data/storage
     depends_on:

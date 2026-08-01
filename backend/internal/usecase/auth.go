@@ -411,7 +411,11 @@ func (a *Auth) ChangePassword(ctx context.Context, userID uuid.UUID, current, ne
 	if err != nil {
 		return err
 	}
-	return a.users.UpdatePassword(ctx, userID, h)
+	if err := a.users.UpdatePassword(ctx, userID, h); err != nil {
+		return err
+	}
+	// cabut sesi lama
+	return a.refresh.RevokeAllForUser(ctx, userID)
 }
 
 func randToken() (string, error) {

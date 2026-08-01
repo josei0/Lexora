@@ -156,6 +156,29 @@ func TestUpdateMemberCrossOrgBlocked(t *testing.T) {
 	}
 }
 
+// T3: nonaktif anggota -> cabut semua sesi refresh-nya (update9-S)
+func TestDeactivateRevokesRefresh(t *testing.T) {
+	org := uuid.New()
+	uid := uuid.New()
+	members := &fakeMembers{list: []domain.Membership{
+		{UserID: uid, OrganizationID: org, Role: domain.OrgRoleMember},
+	}}
+	users := &fakeUsers{m: map[uuid.UUID]*domain.User{uid: {ID: uid, IsActive: true}}}
+	rt := &fakeRefresh{m: map[string]*domain.RefreshToken{
+		"h1": {ID: uuid.New(), UserID: uid, FamilyID: uuid.New(), TokenHash: "h1"},
+	}}
+	uc := NewOrganization(&fakeOrgs{}, users, members)
+	uc.SetRefreshRevoker(rt)
+
+	off := false
+	if _, err := uc.UpdateMember(context.Background(), org, uid, nil, &off); err != nil {
+		t.Fatal(err)
+	}
+	if rt.m["h1"].RevokedAt == nil {
+		t.Fatal("nonaktif anggota harus cabut refresh token-nya")
+	}
+}
+
 // list scoping: caller only sees own org members
 func TestListMembersScopedToOrg(t *testing.T) {
 	orgA, orgB := uuid.New(), uuid.New()

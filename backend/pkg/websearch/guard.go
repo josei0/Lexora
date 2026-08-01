@@ -5,22 +5,44 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 // SSRF guard (10-SECURITY #9). Keamanan: tidak kena ponytail.
-type Guard struct{ allowed []string }
+// allowlist dinamis (update9-B): admin ubah domain -> SetDomains, dibaca per-request.
+type Guard struct {
+	mu      sync.RWMutex
+	allowed []string
+}
 
 func NewGuard(domains []string) *Guard {
+	return &Guard{allowed: normalizeDomains(domains)}
+}
+
+// bersihkan: lowercase, trim, buang kosong
+func normalizeDomains(domains []string) []string {
 	out := make([]string, 0, len(domains))
 	for _, d := range domains {
 		if d = strings.ToLower(strings.TrimSpace(d)); d != "" {
 			out = append(out, d)
 		}
 	}
-	return &Guard{allowed: out}
+	return out
 }
 
-func (g *Guard) Domains() []string { return g.allowed }
+// ganti allowlist tanpa restart (update9-B)
+func (g *Guard) SetDomains(domains []string) {
+	norm := normalizeDomains(domains)
+	g.mu.Lock()
+	g.allowed = norm
+	g.mu.Unlock()
+}
+
+func (g *Guard) Domains() []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.allowed
+}
 
 // skema + allowlist domain + resolve DNS -> tolak IP internal
 func (g *Guard) Check(raw string) error {
@@ -53,6 +75,8 @@ func (g *Guard) Check(raw string) error {
 
 // cocok persis atau subdomain (bukan substring: "evil-bpk.go.id" harus tertolak)
 func (g *Guard) allowedHost(host string) bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	for _, d := range g.allowed {
 		if host == d || strings.HasSuffix(host, "."+d) {
 			return true

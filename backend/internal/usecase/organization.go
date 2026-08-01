@@ -21,10 +21,14 @@ type Organization struct {
 	orgs       domain.OrganizationRepository
 	users      domain.UserRepository
 	members    domain.MembershipRepository
-	seats      *Subscription // ponytail: nil = tanpa batas seat
-	mailer     Mailer        // nil = register langsung aktif (dev tanpa SMTP)
-	appBaseURL string        // untuk link verifikasi email
+	seats      *Subscription                 // ponytail: nil = tanpa batas seat
+	mailer     Mailer                        // nil = register langsung aktif (dev tanpa SMTP)
+	appBaseURL string                        // untuk link verifikasi email
+	refresh    domain.RefreshTokenRepository // update9-S: nil = tak revoke
 }
+
+// SetRefreshRevoker: nonaktif anggota -> cabut sesi refresh-nya (update9-S).
+func (o *Organization) SetRefreshRevoker(r domain.RefreshTokenRepository) { o.refresh = r }
 
 func NewOrganization(o domain.OrganizationRepository, u domain.UserRepository, m domain.MembershipRepository) *Organization {
 	return &Organization{orgs: o, users: u, members: m}
@@ -227,6 +231,12 @@ func (o *Organization) UpdateMember(ctx context.Context, orgID, userID uuid.UUID
 	if active != nil {
 		if err := o.users.SetActive(ctx, userID, *active); err != nil {
 			return nil, err
+		}
+		// nonaktif -> cabut sesi lama
+		if !*active && o.refresh != nil {
+			if err := o.refresh.RevokeAllForUser(ctx, userID); err != nil {
+				return nil, err
+			}
 		}
 	}
 	members, err := o.members.ListByOrg(ctx, orgID)

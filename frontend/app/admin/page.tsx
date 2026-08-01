@@ -1,6 +1,6 @@
 'use client'
 
-import { Building2, CreditCard, LogOut, ScrollText, Terminal } from 'lucide-react'
+import { Building2, CreditCard, Globe, LogOut, ScrollText, Terminal, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   ApiError,
+  addWebDomain,
   adminLogout,
   api,
   assignMemberToOrg,
@@ -16,15 +17,18 @@ import {
   getPrompt,
   listAuditLogs,
   listPlans,
+  listWebDomains,
+  removeWebDomain,
   setPrompt,
   updatePlanLimits,
   type AuditLog,
   type NewMember,
   type Plan,
+  type WebDomain,
 } from '@/lib/api'
 
 type Org = { id: string; name: string; slug: string }
-type Tab = 'org' | 'sub' | 'prompt' | 'log'
+type Tab = 'org' | 'sub' | 'prompt' | 'log' | 'domains'
 
 // form limit window satu plan (update8 F4). Input string '' = tak diubah.
 function PlanLimitForm({ plan, onSaved }: { plan: Plan; onSaved: (p: Plan) => void }) {
@@ -97,6 +101,7 @@ const nav: { id: Tab; label: string; desc: string; icon: typeof CreditCard }[] =
   { id: 'org', label: 'Organisasi', desc: 'Buat organisasi atau assign akun', icon: Building2 },
   { id: 'sub', label: 'Langganan', desc: 'Assign paket ke organisasi', icon: CreditCard },
   { id: 'prompt', label: 'System Prompt', desc: 'Instruksi dasar asisten', icon: Terminal },
+  { id: 'domains', label: 'Domain Web-Search', desc: 'Allowlist sumber pencarian web', icon: Globe },
   { id: 'log', label: 'Log Aktivitas', desc: 'Jejak audit terbaru', icon: ScrollText },
 ]
 
@@ -109,6 +114,7 @@ export default function AdminPage() {
   const [prompt, setPromptText] = useState('')
   const [promptSaved, setPromptSaved] = useState(false)
   const [logs, setLogs] = useState<AuditLog[]>([])
+  const [domains, setDomains] = useState<WebDomain[]>([])
   const [error, setError] = useState('')
 
   const [selOrg, setSelOrg] = useState('')
@@ -136,11 +142,13 @@ export default function AdminPage() {
       listPlans(),
       getPrompt('system'),
       listAuditLogs(50),
-    ]).then(([o, p, pr, l]) => {
+      listWebDomains(),
+    ]).then(([o, p, pr, l, d]) => {
       setOrgs(o)
       setPlans(p)
       setPromptText(pr.content)
       setLogs(l)
+      setDomains(d)
       // default assign ke org rumah "mindlaw" kalau ada
       const home = o.find(x => x.slug === 'mindlaw') ?? o[0]
       if (home) setAssignOrg(home.id)
@@ -356,6 +364,10 @@ export default function AdminPage() {
             </form>
           )}
 
+          {tab === 'domains' && (
+            <DomainsTab domains={domains} setDomains={setDomains} />
+          )}
+
           {tab === 'log' && (
             logs.length === 0 ? (
               <p className="text-sm text-muted-foreground">Belum ada aktivitas.</p>
@@ -374,6 +386,69 @@ export default function AdminPage() {
           )}
         </div>
       </main>
+    </div>
+  )
+}
+
+// allowlist domain web-search (update9-B): tambah + hapus, efek tanpa restart backend
+function DomainsTab({ domains, setDomains }: { domains: WebDomain[]; setDomains: (d: WebDomain[]) => void }) {
+  const [host, setHost] = useState('')
+  const [msg, setMsg] = useState('')
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault()
+    setMsg('')
+    try {
+      const d = await addWebDomain(host.trim())
+      setDomains([...domains, d].sort((a, b) => a.host.localeCompare(b.host)))
+      setHost('')
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : 'gagal menambah domain')
+    }
+  }
+
+  async function remove(h: string) {
+    setMsg('')
+    try {
+      await removeWebDomain(h)
+      setDomains(domains.filter(d => d.host !== h))
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : 'gagal menghapus domain')
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-muted-foreground">
+        Hanya domain di daftar ini yang boleh dikutip pencarian web. Perubahan langsung berlaku tanpa restart.
+      </p>
+      <form onSubmit={add} className="flex items-end gap-3">
+        <div className="flex-1 space-y-1.5">
+          <label className="text-sm font-medium">Tambah domain</label>
+          <Input value={host} onChange={e => setHost(e.target.value)} placeholder="contoh.go.id" required />
+        </div>
+        <Button type="submit">Tambah</Button>
+      </form>
+      {msg && <p className="text-sm text-destructive">{msg}</p>}
+
+      {domains.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Belum ada domain di allowlist.</p>
+      ) : (
+        <div className="divide-y divide-border rounded-lg border border-border">
+          {domains.map(d => (
+            <div key={d.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <span className="font-mono">{d.host}</span>
+              <button
+                onClick={() => remove(d.host)}
+                className="text-muted-foreground transition-colors hover:text-destructive"
+                aria-label={`Hapus ${d.host}`}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

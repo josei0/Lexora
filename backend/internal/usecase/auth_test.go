@@ -49,6 +49,15 @@ func (f *fakeRefresh) RevokeFamily(_ context.Context, familyID uuid.UUID) error 
 	}
 	return nil
 }
+func (f *fakeRefresh) RevokeAllForUser(_ context.Context, userID uuid.UUID) error {
+	for _, t := range f.m {
+		if t.UserID == userID {
+			now := time.Now()
+			t.RevokedAt = &now
+		}
+	}
+	return nil
+}
 
 type fakeRecovery struct{ codes []domain.RecoveryCode }
 
@@ -142,6 +151,25 @@ func TestAdminLoginIssuesAdminAudience(t *testing.T) {
 	}
 	if _, err := appS.Verify(tok.Access); err == nil {
 		t.Fatal("token admin tak boleh lolos verifier app (aud + kunci beda)")
+	}
+}
+
+// T2: ganti password -> refresh lama invalid (update9-S)
+func TestChangePasswordRevokesRefresh(t *testing.T) {
+	su := mkUser("s@x", "pw12345678", domain.SystemRoleSuperAdmin)
+	uc, _, _ := newAuthUC(&fakeUsers{m: map[uuid.UUID]*domain.User{su.ID: su}})
+	ctx := context.Background()
+
+	step, err := uc.AdminLogin(ctx, "s@x", "pw12345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.ChangePassword(ctx, su.ID, "pw12345678", "newpw12345678"); err != nil {
+		t.Fatal(err)
+	}
+	// refresh lama harus mati
+	if _, err := uc.AdminRefresh(ctx, step.Tokens.Refresh); err != domain.ErrInvalidToken {
+		t.Fatalf("refresh lama harus invalid setelah ganti password, got %v", err)
 	}
 }
 

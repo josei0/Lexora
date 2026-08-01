@@ -151,5 +151,6 @@ type RefreshTokenRepository interface {
 	ByHash(ctx context.Context, hash string) (*RefreshToken, error)
 	Revoke(ctx context.Context, id uuid.UUID) error
 	RevokeByHash(ctx context.Context, hash string) error
-	RevokeFamily(ctx context.Context, familyID uuid.UUID) error // cabut se-family
+	RevokeFamily(ctx context.Context, familyID uuid.UUID) error   // cabut se-family
+	RevokeAllForUser(ctx context.Context, userID uuid.UUID) error // ganti-pw/nonaktif
 }

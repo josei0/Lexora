@@ -90,6 +90,47 @@ func (r *InvoiceRepo) DueRenewals(ctx context.Context, cutoff time.Time) ([]doma
 	return out, rows.Err()
 }
 
+// kandidat reminder dunning (update9-A). period_end jatuh tepat di titik H-7/H-1
+// (mendatang) atau H+3 (past_due), per hari kalender. Join org_admin aktif =
+// satu baris per admin. Anti-dobel (last_reminder_at) diputuskan di usecase.
+// ponytail: date() pakai tz sesi DB; localhost cukup, presisi WIB nyusul kalau perlu.
+func (r *InvoiceRepo) DueReminders(ctx context.Context, now time.Time) ([]domain.ReminderCandidate, error) {
+	rows, err := r.db.Query(ctx, `
+		select s.organization_id, s.current_period_end, u.email, u.full_name, o.name, p.name, s.last_reminder_at
+		from subscriptions s
+		join plans p on p.id = s.plan_id
+		join organizations o on o.id = s.organization_id
+		join memberships m on m.organization_id = s.organization_id and m.role = 'org_admin'
+		join users u on u.id = m.user_id and u.is_active = true
+		where p.price_idr > 0
+		  and s.current_period_end is not null
+		  and date(s.current_period_end) in (
+		      date($1::timestamptz + interval '7 days'),
+		      date($1::timestamptz + interval '1 day'),
+		      date($1::timestamptz - interval '3 days'))`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ReminderCandidate
+	for rows.Next() {
+		var c domain.ReminderCandidate
+		if err := rows.Scan(&c.OrganizationID, &c.PeriodEnd, &c.AdminEmail, &c.AdminName, &c.OrgName, &c.PlanName, &c.LastReminderAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// tandai reminder terkirim - anti-dobel-kirim (update9-A).
+func (r *InvoiceRepo) MarkReminded(ctx context.Context, orgID uuid.UUID, at time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		update subscriptions set last_reminder_at = $2, updated_at = now()
+		where organization_id = $1`, orgID, at)
+	return err
+}
+
 // paid + extend dalam satu transaksi. Idempoten: invoice non-pending -> no-op.
 func (r *InvoiceRepo) MarkPaid(ctx context.Context, id uuid.UUID, at time.Time) (*domain.Invoice, bool, error) {
 	tx, err := r.db.Begin(ctx)

@@ -54,7 +54,14 @@ func main() {
 	freeUser := upsertUser(ctx, pool, "free@mindlaw.web.id", devPassword, "User Free", domain.SystemRoleNone)
 	addMember(ctx, pool, freeUser, freeOrg, domain.OrgRoleAdmin)
 
-	log.Printf("seed selesai: 4 akun (superadmin, admin, pro, free)")
+	// 4. org internal (update9-A): slug 'mindlaw' di-hard-ref FE default-assign.
+	// Pro biar jadi kandidat dunning saat verifikasi email live.
+	internalOrg := upsertOrg(ctx, pool, "Mind Law Internal", "mindlaw")
+	subscribe(ctx, pool, internalOrg, domain.PlanPro, 5)
+	internalUser := upsertUser(ctx, pool, "internal@mindlaw.web.id", devPassword, "Admin Internal", domain.SystemRoleNone)
+	addMember(ctx, pool, internalUser, internalOrg, domain.OrgRoleAdmin)
+
+	log.Printf("seed selesai: 5 akun (superadmin, admin, pro, free, internal)")
 }
 
 // idempotent user upsert; return id

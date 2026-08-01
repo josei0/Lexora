@@ -50,6 +50,20 @@ type RenewalCandidate struct {
 	PeriodEnd      time.Time
 }
 
+// kandidat reminder dunning (update9-A): satu baris per org_admin aktif dari
+// subscription berbayar yg period_end jatuh di titik H-7/H-1 (mendatang) atau
+// H+3 (past_due). AdminEmail/Name = tujuan email, PlanName = isi body.
+// LastReminderAt = anti-dobel: skip kalau sudah diingatkan hari yang sama.
+type ReminderCandidate struct {
+	OrganizationID uuid.UUID
+	PeriodEnd      time.Time
+	AdminEmail     string
+	AdminName      string
+	OrgName        string // nama firma (isi body)
+	PlanName       string
+	LastReminderAt *time.Time
+}
+
 type InvoiceRepository interface {
 	Create(ctx context.Context, inv *Invoice) error
 	ByID(ctx context.Context, id uuid.UUID) (*Invoice, error)

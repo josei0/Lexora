@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,7 +28,8 @@ type Provider interface {
 // Spike 2026-07-26: openai/gpt-4o-mini-search-preview balikin url_citation terstruktur.
 type MaiaSearch struct {
 	baseURL, apiKey, model string
-	allowed                []string // allowlist domain, disuntik ke prompt
+	mu                     sync.RWMutex
+	allowed                []string // allowlist domain dinamis (update9-B), disuntik ke prompt
 	http                   *http.Client
 }
 
@@ -36,6 +38,19 @@ func NewMaiaSearch(baseURL, apiKey, model string, allowed []string) *MaiaSearch 
 		baseURL: baseURL, apiKey: apiKey, model: model, allowed: allowed,
 		http: &http.Client{Timeout: 60 * time.Second},
 	}
+}
+
+// ganti allowlist tanpa restart (update9-B)
+func (m *MaiaSearch) SetDomains(domains []string) {
+	m.mu.Lock()
+	m.allowed = domains
+	m.mu.Unlock()
+}
+
+func (m *MaiaSearch) domains() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.allowed
 }
 
 func (m *MaiaSearch) Name() string { return m.model }
@@ -112,11 +127,12 @@ func (m *MaiaSearch) Search(ctx context.Context, query string, limit int) ([]Res
 
 // allowlist di level search: presisi hukum naik, permukaan injeksi mengecil
 func (m *MaiaSearch) prompt(query string) string {
+	allowed := m.domains()
 	var sb strings.Builder
 	sb.WriteString("Cari di web dan jawab ringkas berdasarkan sumber hukum Indonesia.\n")
-	if len(m.allowed) > 0 {
+	if len(allowed) > 0 {
 		sb.WriteString("Utamakan sumber dari domain berikut: ")
-		sb.WriteString(strings.Join(m.allowed, ", "))
+		sb.WriteString(strings.Join(allowed, ", "))
 		sb.WriteString(".\n")
 	}
 	sb.WriteString("Sebutkan dasar hukum yang relevan beserta tautan sumbernya.\n\nPertanyaan: ")
@@ -125,7 +141,8 @@ func (m *MaiaSearch) prompt(query string) string {
 }
 
 func (m *MaiaSearch) allowedURL(raw string) bool {
-	if len(m.allowed) == 0 {
+	allowed := m.domains()
+	if len(allowed) == 0 {
 		return true
 	}
 	u, err := url.Parse(raw)
@@ -133,7 +150,7 @@ func (m *MaiaSearch) allowedURL(raw string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	for _, d := range m.allowed {
+	for _, d := range allowed {
 		if host == d || strings.HasSuffix(host, "."+d) {
 			return true
 		}
