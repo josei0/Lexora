@@ -8,7 +8,8 @@ DC     := docker compose -f docker-compose.prod.yml
 # file yang JANGAN ikut ke-sync (secret lokal / artefak build)
 EXCLUDES := --exclude=.git --exclude=node_modules --exclude=frontend/node_modules \
             --exclude=frontend/.next --exclude=.next --exclude=.env \
-            --exclude=.env.deploy --exclude=.env.example --exclude=server.log --exclude=server.err
+            --exclude=.env.deploy --exclude=.env.example --exclude=server.log --exclude=server.err \
+            --exclude=storage
 
 .PHONY: help sync deploy deploy-backend deploy-frontend ps logs restart shell \
         user-list user-create user-passwd user-activate user-deactivate user-delete

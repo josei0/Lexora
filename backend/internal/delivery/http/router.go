@@ -23,6 +23,13 @@ func NewRouter(api *handler.API, chats *handler.ChatAPI, billing *handler.Billin
 
 	// chat + billing di luar openapi: mux manual
 	mux := http.NewServeMux()
+
+	// health check endpoint (public, no auth needed)
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
 	chats.Routes(mux)
 	billing.Routes(mux)
 	web.Routes(mux)

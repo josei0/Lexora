@@ -120,18 +120,20 @@ func subscribe(ctx context.Context, pool *pgxpool.Pool, orgID uuid.UUID, planCod
 	}
 }
 
-// seed plans (idempotent). Model = tier: Demo Normal (Haiku), Pro High (Sonnet).
+// seed plans (idempotent). Model = tier: Demo Normal, Pro High.
 // Nilai harus sama persis dgn CHAT_MODEL_NORMAL/HIGH - itu yang dibandingkan RAG.gate.
+// ponytail: sementara model OpenAI, Maia menolak semua Claude sejak 2026-08-06
+// (sonnet 400 no-healthy-deployment, anthropic/* 401). Balikkan bareng .env.production.
 func seedPlans(ctx context.Context, pool *pgxpool.Pool) {
 	repo := postgres.NewPlanRepo(pool)
 	plans := []domain.Plan{
 		// update8: limit per window per seat. 0 = window nonaktif.
 		// Demo: ketat di semua window (session 30k, weekly 80k, monthly 200k) + cap harian.
-		{Code: domain.PlanDemo, Name: "Demo", Model: "anthropic/claude-haiku-4-5", PriceIDR: 0,
+		{Code: domain.PlanDemo, Name: "Demo", Model: "openai/gpt-4o-mini", PriceIDR: 0,
 			MonthlyTokenLimit: 200_000, SessionTokenLimit: 30_000, WeeklyTokenLimit: 80_000, IsActive: true,
 			WebSearchEnabled: false, DailyWebSearches: 0, DailyMessages: 10},
 		// Pro: longgar — session 300k, weekly 800k, monthly 2jt per seat.
-		{Code: domain.PlanPro, Name: "Pro", Model: "maia/claude-sonnet-4-5", PriceIDR: 275_000,
+		{Code: domain.PlanPro, Name: "Pro", Model: "openai/gpt-5.2", PriceIDR: 275_000,
 			MonthlyTokenLimit: 2_000_000, SessionTokenLimit: 300_000, WeeklyTokenLimit: 800_000, IsActive: true,
 			WebSearchEnabled: true, DailyWebSearches: 10, DailyMessages: 0},
 	}

@@ -35,3 +35,9 @@ Thumbs.db
 # Planning & MCP (internal)
 PLAN/
 mcp/
+
+# aset internal lokal (bukan bagian aplikasi)
+graphify/
+graphify-out/
+mayar/
+backup.sh

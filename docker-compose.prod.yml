@@ -1,5 +1,6 @@
 services:
   postgres:
+    container_name: mindlaw-postgres-1
     image: postgres:16-alpine
     restart: unless-stopped
     env_file: .env.production
@@ -7,6 +8,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # ponytail: batasi shared buffers di 256MB (default 128MB -> terlalu kecil)
+      # total mem = 8GB, alokasi: pg=40%, qdrant=20%, app=30%
+      shared_buffers: 256MB
+      max_connections: 50
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,22 +25,40 @@ services:
       retries: 10
 
   qdrant:
+    container_name: mindlaw-qdrant-1
     image: qdrant/qdrant:latest
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     volumes:
       - qdrantdata:/qdrant/storage
 
   backend:
+    container_name: mindlaw-backend-1
     build: ./backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
     env_file: .env.production
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       QDRANT_URL: http://qdrant:6333
-      # update9-S: rute /admin/* + /auth/admin/* hanya dilayani di host ini
-      ADMIN_API_HOST: ${ADMIN_API_HOST:-admin-api.mindlaw.web.id}
+      # update9-S: rute /admin/* + /auth/admin/* hanya dilayani di host ini.
+      # ponytail: kosong = nonaktif. DNS admin-api.* belum ada dan FE memanggil
+      # /admin/* lewat api.* -> kalau di-set sekarang semua rute admin jadi 404.
+      ADMIN_API_HOST: ${ADMIN_API_HOST:-}
     volumes:
-      - storage:/data/storage
+      - ./storage:/data/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,19 +66,26 @@ services:
         condition: service_started
 
   frontend:
+    container_name: mindlaw-frontend-1
     build:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: https://api.mindlaw.web.id
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     env_file: .env.production
     environment:
       PORT: 3000
       HOSTNAME: 0.0.0.0
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   caddy:
+    container_name: mindlaw-caddy-1
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
@@ -68,6 +102,5 @@ services:
 volumes:
   pgdata:
   qdrantdata:
-  storage:
   caddy_data:
   caddy_config:

@@ -1,11 +1,16 @@
 # update9-S: HSTS global + isolasi host admin + IP-lock.
 # DNS 4-host + TLS auto + trusted_proxies real-IP = runbook deploy (NEEDS-DEPLOY).
-# Ganti 203.0.113.0/24 dgn IP kantor/VPN sebenarnya sebelum live.
+#
+# ponytail: IP-lock NONAKTIF. 203.0.113.0/24 itu blok dokumentasi TEST-NET-3,
+# bukan IP nyata -> semua orang kena 403 termasuk admin sendiri. Aktifkan lagi
+# (uncomment import adminlock di admin.* + admin-api.*) setelah IP kantor/VPN
+# pasti DAN A record admin-api.mindlaw.web.id -> 103.193.179.9 dibuat.
 (hsts) {
 	header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 }
 
 # IP-lock: hanya IP dipercaya boleh ke panel admin. Sisanya 403.
+# Ganti 203.0.113.0/24 dgn IP kantor/VPN sebenarnya sebelum dipakai.
 (adminlock) {
 	@notallowed not remote_ip 203.0.113.0/24 127.0.0.1/32
 	respond @notallowed "forbidden" 403
@@ -17,10 +22,10 @@ mindlaw.web.id, app.mindlaw.web.id {
 	reverse_proxy frontend:3000
 }
 
-# panel admin (FE) - IP-lock
+# panel admin (FE) - IP-lock nonaktif (lihat catatan di atas)
 admin.mindlaw.web.id {
 	import hsts
-	import adminlock
+	# import adminlock
 	# root -> login, path lain (/admin, /admin-login) normal
 	@root path /
 	redir @root /admin-login 302
@@ -33,11 +38,15 @@ api.mindlaw.web.id {
 	reverse_proxy backend:8080
 }
 
-# API admin - host terpisah + IP-lock. Backend cek ADMIN_API_HOST juga (defense-in-depth).
-admin-api.mindlaw.web.id {
-	import hsts
-	import adminlock
-	reverse_proxy backend:8080
-}
+# API admin - host terpisah. Backend cek ADMIN_API_HOST juga (defense-in-depth).
+# ponytail: DINONAKTIFKAN — A record admin-api.mindlaw.web.id belum ada, jadi ACME
+# gagal berulang dan membakar rate limit Let's Encrypt. ADMIN_API_HOST dikosongkan
+# di compose, /admin/* tetap dilayani di api.*. Aktifkan bareng: buat DNS -> uncomment
+# blok ini -> set ADMIN_API_HOST -> pasang IP asli di adminlock.
+# admin-api.mindlaw.web.id {
+# 	import hsts
+# 	import adminlock
+# 	reverse_proxy backend:8080
+# }
 
 # redir 80 -> 443: Caddy auto-HTTPS sudah lakukan otomatis utk tiap vhost di atas.

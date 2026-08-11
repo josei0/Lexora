@@ -98,6 +98,7 @@ func dailyJobs(ctx context.Context, invUC *usecase.Invoice, dunUC *usecase.Dunni
 func main() {
 	config.LoadDotenv(".env")
 	config.LoadDotenv("../.env")
+	config.LoadDotenv("../.env.production")
 
 	cfg, err := config.Load()
 	if err != nil {

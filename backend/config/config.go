@@ -67,8 +67,10 @@ func Load() (*Config, error) {
 		QdrantURL:          env("QDRANT_URL", "http://localhost:6333"),
 		JWTSecret:          env("JWT_SECRET", ""),
 		JWTAdminSecret:     env("JWT_ADMIN_SECRET", ""),
-		ChatModelHigh:      env("CHAT_MODEL_HIGH", env("CHAT_MODEL", "maia/claude-sonnet-4-5")), // CHAT_MODEL = nama lama
-		ChatModelNormal:    env("CHAT_MODEL_NORMAL", "anthropic/claude-haiku-4-5"),
+		// default = target akhir (Haiku x Sonnet). Prod sementara override ke OpenAI
+		// lewat env karena Anthropic di Maia 401; lihat catatan di .env.production.
+		ChatModelHigh:   env("CHAT_MODEL_HIGH", env("CHAT_MODEL", "maia/claude-sonnet-4-5")), // CHAT_MODEL = nama lama
+		ChatModelNormal: env("CHAT_MODEL_NORMAL", "anthropic/claude-haiku-4-5"),
 		EmbeddingProvider:  env("EMBEDDING_PROVIDER", "maia"),
 		EmbeddingURL:       env("EMBEDDING_URL", "https://api.maiarouter.ai/v1"),
 		EmbeddingModel:     env("EMBEDDING_MODEL", "openai/text-embedding-3-large"),
